@@ -1,0 +1,150 @@
+{
+  "questions": [
+    {
+      "number": 1,
+      "text": "Define speed and write its SI unit.",
+      "max_marks": 5.0,
+      "answer_key": "Speed is the distance covered by a body in unit time. SI unit: metre per second (m/s)."
+    },
+    {
+      "number": 2,
+      "text": "A car covers 150 m in 12 s. Find its speed.",
+      "max_marks": 5.0,
+      "answer_key": "v = s / t = 150 m / 12 s = 12.5 m/s (formula 1, substitution 2, answer with unit 2)."
+    },
+    {
+      "number": 3,
+      "text": "State Newton's first law of motion.",
+      "max_marks": 5.0,
+      "answer_key": "A body remains at rest or continues to move with uniform velocity in a straight line unless an unbalanced external force acts on it."
+    }
+  ],
+  "copies": [
+    {
+      "variant": "good",
+      "name": "Ayesha Khan",
+      "roll": "02",
+      "total": 14,
+      "summary": "Excellent work: clear definition and correct working with units. Mention 'unbalanced' force in Newton's law.",
+      "answers": [
+        {
+          "number": 1,
+          "marks": 5,
+          "comment": "",
+          "page": 1,
+          "region": {
+            "y0": 0.143125,
+            "y1": 0.183125
+          },
+          "reason": "Full marks."
+        },
+        {
+          "number": 2,
+          "marks": 5,
+          "comment": "",
+          "page": 1,
+          "region": {
+            "y0": 0.324375,
+            "y1": 0.364375
+          },
+          "reason": "Full marks."
+        },
+        {
+          "number": 3,
+          "marks": 4,
+          "comment": "Say 'unbalanced external force'",
+          "page": 1,
+          "region": {
+            "y0": 0.463125,
+            "y1": 0.48875
+          },
+          "reason": "Say 'unbalanced external force'"
+        }
+      ]
+    },
+    {
+      "variant": "mixed",
+      "name": "Ali Raza",
+      "roll": "03",
+      "total": 8,
+      "summary": "Good method in the numerical but a calculation slip and missing unit. Revise the difference between Newton's first and third laws.",
+      "answers": [
+        {
+          "number": 1,
+          "marks": 5,
+          "comment": "",
+          "page": 1,
+          "region": {
+            "y0": 0.14375,
+            "y1": 0.18375
+          },
+          "reason": "Full marks."
+        },
+        {
+          "number": 2,
+          "marks": 3,
+          "comment": "150 / 12 = 12.5, not 13.5. Write unit m/s",
+          "page": 1,
+          "region": {
+            "y0": 0.323125,
+            "y1": 0.34125
+          },
+          "reason": "150 / 12 = 12.5, not 13.5. Write unit m/s"
+        },
+        {
+          "number": 3,
+          "marks": 0,
+          "comment": "This is the third law, not the first",
+          "page": 1,
+          "region": {
+            "y0": 0.434375,
+            "y1": 0.454375
+          },
+          "reason": "This is the third law, not the first"
+        }
+      ]
+    },
+    {
+      "variant": "weak",
+      "name": "Hamza Ahmed",
+      "roll": "05",
+      "total": 3,
+      "summary": "Needs to learn the definitions word for word and practise using v = s / t. Please revise Chapter 2 with your teacher.",
+      "answers": [
+        {
+          "number": 1,
+          "marks": 2,
+          "comment": "Define as distance per unit time, add unit",
+          "page": 1,
+          "region": {
+            "y0": 0.145625,
+            "y1": 0.185625
+          },
+          "reason": "Define as distance per unit time, add unit"
+        },
+        {
+          "number": 2,
+          "marks": 0,
+          "comment": "Use v = s / t, not s x t",
+          "page": 1,
+          "region": {
+            "y0": 0.2175,
+            "y1": 0.240625
+          },
+          "reason": "Use v = s / t, not s x t"
+        },
+        {
+          "number": 3,
+          "marks": 1,
+          "comment": "This is the second law; first law is inertia",
+          "page": 1,
+          "region": {
+            "y0": 0.285625,
+            "y1": 0.310625
+          },
+          "reason": "This is the second law; first law is inertia"
+        }
+      ]
+    }
+  ]
+}

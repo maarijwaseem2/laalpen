@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LaalPen — AI copy checking for schools</title>
+  <meta name="description" content="Teachers photograph answer copies, AI checks them with a red pen and explains every mark, the teacher approves, students and parents see the checked copy." />
+  <meta name="theme-color" content="#C8102E" />
+  <meta property="og:title" content="LaalPen — every copy checked in minutes" />
+  <meta property="og:description" content="AI does the first check. Your teachers decide the final marks." />
+  <meta property="og:image" content="assets/checked-copy.jpg" />
+  <link rel="icon" href="assets/favicon.png" />
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+  <link rel="preload" href="fonts/lexend-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="fonts/caveat-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="top">
+    <div class="wrap top-row">
+      <a class="wordmark" href="#" aria-label="LaalPen home">LaalPen</a>
+      <nav aria-label="Sections">
+        <a href="#how">How it works</a>
+        <a href="#people">Who it helps</a>
+        <a href="#join">Students</a>
+        <a href="#faq">Questions</a>
+      </nav>
+      <button class="btn btn-red btn-small" data-open-app type="button">Open app</button>
+    </div>
+  </header>
+
+  <!-- always-visible side button: opens the installed mobile app -->
+  <button class="side-open" data-open-app type="button" aria-label="Open the LaalPen app">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.5" /><path d="M10.5 18.5h3" /></svg>
+    <span>Open app</span>
+  </button>
+
+  <main id="main">
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div class="hero-text">
+          <h1>Every copy checked in minutes. Every mark explained on the page.</h1>
+          <p class="lead">Teachers photograph the answer copies. LaalPen checks them against the teacher's own answer key, marks them in red pen, and the teacher approves the final marks. Students and parents see exactly why marks were cut.</p>
+          <div class="cta-row">
+            <button class="btn btn-red" data-open-app type="button">Open the app</button>
+            <a class="btn btn-line" href="#how">See how it works</a>
+          </div>
+          <p class="fine">Built for Pakistani schools and academies: Classes 1–12, FBISE, Sindh and Punjab boards.</p>
+        </div>
+
+        <figure class="copy" aria-label="A student's answer being checked in red pen: 8 out of 15">
+          <div class="copy-sheet">
+            <span class="margin-line" aria-hidden="true"></span>
+            <div class="hand head">Name: Ali Raza <span class="roll">Roll 9A-03</span></div>
+            <div class="hand head">Physics — Unit Test 1</div>
+            <div class="q">
+              <div class="hand"><b>Q1.</b> Speed is distance per unit time.</div>
+              <div class="hand indent">SI unit is m/s</div>
+              <div class="pen mark" style="--d:.9s">✓ 5/5</div>
+            </div>
+            <div class="q">
+              <div class="hand"><b>Q2.</b> v = s / t = 150 / 12</div>
+              <div class="hand indent underline-host">v = 13.5
+                <svg class="underline" viewBox="0 0 120 10" preserveAspectRatio="none" aria-hidden="true"><path d="M2 6 C 30 3, 60 9, 118 5" /></svg>
+              </div>
+              <div class="pen note" style="--d:1.9s">150 / 12 = 12.5, not 13.5. Write m/s</div>
+              <div class="pen mark" style="--d:1.5s">✓ 3/5</div>
+            </div>
+            <div class="q">
+              <div class="hand"><b>Q3.</b> Every action has an equal and</div>
+              <div class="hand indent">opposite reaction.</div>
+              <div class="pen note" style="--d:2.6s">This is the third law, not the first</div>
+              <div class="pen mark" style="--d:2.3s">✗ 0/5</div>
+            </div>
+            <div class="score" aria-hidden="true">
+              <svg viewBox="0 0 100 100"><path class="ring" d="M50 6 C 76 5, 95 24, 94 50 C 94 76, 74 95, 49 94 C 24 94, 5 75, 6 50 C 7 27, 25 9, 46 7" /></svg>
+              <span class="pen top">8</span><span class="bar"></span><span class="pen bottom">15</span>
+            </div>
+          </div>
+          <figcaption>Teacher sees this, changes any mark, then approves.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section id="how" class="band">
+      <div class="wrap">
+        <h2>From a pile of copies to explained results</h2>
+        <ol class="steps">
+          <li>
+            <h3>Photograph the copies</h3>
+            <p>After a test, the teacher takes a photo of each page on a phone. No scanner needed, poor light is fixed automatically.</p>
+          </li>
+          <li>
+            <h3>AI checks against your key</h3>
+            <p>Every answer is compared with the teacher's answer key. Any correct method is accepted and maths answers are re-calculated.</p>
+          </li>
+          <li>
+            <h3>The teacher decides</h3>
+            <p>The copy comes back in red pen. Answers the AI was unsure about are flagged. The teacher changes any mark and approves.</p>
+          </li>
+          <li>
+            <h3>Students and parents see why</h3>
+            <p>Students open their checked copy in the app. Parents get the result by email. Every cut mark has a reason next to it.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="showcase">
+      <div class="wrap showcase-grid">
+        <div class="showcase-img">
+          <img src="assets/checked-copy.jpg" alt="A student's copy checked by LaalPen: ticks, marks, underlined mistakes and short comments in red pen, total 8 out of 15" loading="lazy" width="900" height="1273" />
+        </div>
+        <div class="showcase-text">
+          <h2>The red pen explains itself</h2>
+          <ul class="rules">
+            <li><strong>Underline, not guesswork.</strong> The line with the mistake is underlined and the comment sits in the nearest empty space on the page.</li>
+            <li><strong>Unsure means ask.</strong> When the AI cannot read an answer, it does not cut marks. It sends the answer to the teacher.</li>
+            <li><strong>Nothing reaches a student without the teacher.</strong> Marks stay private until the teacher approves and publishes them.</li>
+            <li><strong>Handwriting is not marked down.</strong> Only the answer is checked, unless the teacher asks for neatness marks.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="people" class="band">
+      <div class="wrap">
+        <h2>Who it helps</h2>
+        <div class="people">
+          <article>
+            <h3>Teachers</h3>
+            <p>Check a class test in an evening instead of a weekend. Your classes appear as tiles; tap a class, pick the subject, and every copy and mark is there.</p>
+          </article>
+          <article>
+            <h3>Students</h3>
+            <p>See your checked copy on your phone, question by question, and your progress in every subject across the year.</p>
+          </article>
+          <article>
+            <h3>Parents</h3>
+            <p>Get each result by email with the teacher's note, instead of waiting for the term report.</p>
+          </article>
+          <article>
+            <h3>Principals and owners</h3>
+            <p>One dashboard for classes, teachers, tests and copies checked. Run more tests without adding hours to your teachers' day.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="join" class="join">
+      <div class="wrap join-grid">
+        <div>
+          <h2>Students: join your school in a minute</h2>
+          <p class="lead">Your school gives you a short code. Your class teacher approves you, so only real students of the class get in.</p>
+        </div>
+        <ol class="join-steps">
+          <li><span class="pen">ALN-2026</span> Enter your school code in the app</li>
+          <li>Choose your class, section and roll number</li>
+          <li>Verify your email with the 6-digit code</li>
+          <li>Your teacher approves you and your results appear</li>
+        </ol>
+      </div>
+    </section>
+
+    <section id="faq" class="band">
+      <div class="wrap faq">
+        <h2>Questions schools ask</h2>
+        <details>
+          <summary>Does it replace the teacher?</summary>
+          <p>No. LaalPen is the first checker. The teacher sees every mark, changes what they disagree with and approves. Nothing is shown to students before that.</p>
+        </details>
+        <details>
+          <summary>Which subjects and classes work today?</summary>
+          <p>English-medium answers in any subject, Classes 1–12. Maths and science work especially well because final answers are re-calculated. Urdu handwriting support is coming next.</p>
+        </details>
+        <details>
+          <summary>What happens to the students' copies?</summary>
+          <p>Copies are stored for your school only and opened through short-lived private links. Only the student, their teachers and your admins can see them. They are never used to train public AI models.</p>
+        </details>
+        <details>
+          <summary>Which phones does it need?</summary>
+          <p>Any Android phone or iPhone with a camera. Principals and admins can also manage the school from a computer.</p>
+        </details>
+        <details>
+          <summary>How do we start?</summary>
+          <p>Register your school in the app, add classes and teachers, and share your school code with students. <a href="#" data-contact>Talk to us</a> for a free pilot.</p>
+        </details>
+      </div>
+    </section>
+
+    <section class="final">
+      <div class="wrap final-row">
+        <p class="pen big">Har copy ka hisaab.</p>
+        <button class="btn btn-red" data-open-app type="button">Open the LaalPen app</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap foot-row">
+      <span class="wordmark small">LaalPen</span>
+      <span>AI copy checking for Pakistani schools and academies</span>
+      <a href="#" data-contact>Contact</a>
+    </div>
+  </footer>
+
+  <!-- shown on a computer: scan with the phone to open the app there -->
+  <dialog id="open-dialog" aria-labelledby="open-title">
+    <form method="dialog" class="dialog">
+      <h2 id="open-title">Open LaalPen on your phone</h2>
+      <p>Scan this code with your phone's camera. If the app is installed it opens straight away; if not, you get the download link.</p>
+      <div id="qr" class="qr" role="img" aria-label="QR code that opens the LaalPen app"></div>
+      <div id="store-links" class="store-links"></div>
+      <button class="btn btn-line" value="close">Close</button>
+    </form>
+  </dialog>
+
+  <!-- shown on a phone when the app is not installed yet -->
+  <dialog id="get-dialog" aria-labelledby="get-title">
+    <form method="dialog" class="dialog">
+      <h2 id="get-title">Get the LaalPen app</h2>
+      <p id="get-text">The app did not open, so it is probably not installed yet.</p>
+      <div id="get-links" class="store-links"></div>
+      <button class="btn btn-line" value="close">Close</button>
+    </form>
+  </dialog>
+
+  <script src="config.js"></script>
+  <script src="vendor/qrcode.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>

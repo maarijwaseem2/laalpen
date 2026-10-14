@@ -1,0 +1,102 @@
+# LaalPen â€” poora stack Docker se.
+# Local PostgreSQL (5432) se clash na ho, is liye container DB port 5433 par hai.
+#
+#   docker compose up -d --build
+#   docker compose ps
+#   docker compose down          # volumes rehte hain (data nahi mit'ta)
+#   docker compose down -v       # volumes bhi (sirf jab aap chahein)
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: laalpen
+    ports:
+      - "${LP_DB_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  ai:
+    build: ./ai-service
+    restart: unless-stopped
+    env_file: ./ai-service/.env
+    environment:
+      SERVICE_TOKEN: ${AI_SERVICE_TOKEN:-dev-ai-token}
+    ports:
+      - "${LP_AI_PORT:-8001}:8000"   # 8000 aksar doosre projects le lete hain
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/laalpen?schema=public
+      AI_SERVICE_URL: http://ai:8000
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:-dev-ai-token}
+      APP_URL: http://localhost:8081
+      PUBLIC_API_URL: http://localhost:4000
+      CORS_ORIGINS: "*"
+      STORAGE_DRIVER: local
+      UPLOAD_DIR: /app/uploads
+      SEED_DEMO: "true"
+    ports:
+      - "${LP_API_PORT:-4000}:4000"
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+      ai:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+  app:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+      args:
+        EXPO_PUBLIC_API_URL: http://localhost:4000
+    restart: unless-stopped
+    ports:
+      - "${LP_APP_PORT:-8081}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build: ./web
+    restart: unless-stopped
+    ports:
+      - "${LP_WEB_PORT:-8090}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+  uploads:

@@ -1,0 +1,137 @@
+{
+  "name": "LaalPen sample golden set (synthetic demo copies \u2014 replace with real double-marked copies)",
+  "questions": [
+    {
+      "number": 1,
+      "text": "Define speed and write its SI unit.",
+      "max_marks": 5.0,
+      "answer_key": "Speed is the distance covered by a body in unit time. SI unit: metre per second (m/s).",
+      "type": "theory",
+      "final_answer": null,
+      "rules": [
+        {
+          "id": "R1",
+          "text": "3 marks for the definition (distance per unit time), any wording"
+        },
+        {
+          "id": "R2",
+          "text": "2 marks for the SI unit m/s"
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "text": "A car covers 150 m in 12 s. Find its speed.",
+      "max_marks": 5.0,
+      "answer_key": "v = s / t = 150 m / 12 s = 12.5 m/s (formula 1, substitution 2, answer with unit 2).",
+      "type": "numeric",
+      "final_answer": "12.5 m/s",
+      "rules": [
+        {
+          "id": "R1",
+          "text": "1 mark formula v = s/t"
+        },
+        {
+          "id": "R2",
+          "text": "2 marks correct substitution"
+        },
+        {
+          "id": "R3",
+          "text": "2 marks answer 12.5 with unit; -1 if unit missing"
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "text": "State Newton's first law of motion.",
+      "max_marks": 5.0,
+      "answer_key": "A body remains at rest or continues to move with uniform velocity in a straight line unless an unbalanced external force acts on it.",
+      "type": "theory",
+      "final_answer": null,
+      "rules": [
+        {
+          "id": "R1",
+          "text": "Full marks for rest/uniform motion unless an unbalanced external force acts"
+        },
+        {
+          "id": "R2",
+          "text": "-1 if 'unbalanced' or 'external' is missing"
+        }
+      ]
+    }
+  ],
+  "copies": [
+    {
+      "id": "demo-good",
+      "pages": [
+        "../../../../backend/prisma/seed-assets/good-page-1.jpg"
+      ],
+      "subject": "Physics",
+      "class_name": "Class 9",
+      "language": "en",
+      "group": {
+        "handwriting": "neat"
+      },
+      "marks": {
+        "teacher_a": {
+          "1": 5,
+          "2": 5,
+          "3": 4
+        },
+        "teacher_b": {
+          "1": 5,
+          "2": 5,
+          "3": 4
+        }
+      }
+    },
+    {
+      "id": "demo-mixed",
+      "pages": [
+        "../../../../backend/prisma/seed-assets/mixed-page-1.jpg"
+      ],
+      "subject": "Physics",
+      "class_name": "Class 9",
+      "language": "en",
+      "group": {
+        "handwriting": "average"
+      },
+      "marks": {
+        "teacher_a": {
+          "1": 5,
+          "2": 3,
+          "3": 0
+        },
+        "teacher_b": {
+          "1": 5,
+          "2": 3,
+          "3": 0
+        }
+      }
+    },
+    {
+      "id": "demo-weak",
+      "pages": [
+        "../../../../backend/prisma/seed-assets/weak-page-1.jpg"
+      ],
+      "subject": "Physics",
+      "class_name": "Class 9",
+      "language": "en",
+      "group": {
+        "handwriting": "messy"
+      },
+      "marks": {
+        "teacher_a": {
+          "1": 2,
+          "2": 0,
+          "3": 1
+        },
+        "teacher_b": {
+          "1": 2,
+          "2": 0.5,
+          "3": 1
+        }
+      }
+    }
+  ]
+}

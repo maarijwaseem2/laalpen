@@ -1,0 +1,53 @@
+# ---- secrets: every .env, but keep the examples ----
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+!.env.docker.example
+!**/.env.docker.example
+*.pem
+*.key
+*.p8
+*.p12
+*.jks
+*.keystore
+
+# ---- dependencies / virtualenvs ----
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# ---- build output / exports ----
+dist/
+web-build/
+.expo/
+backend/src/generated/
+*.tsbuildinfo
+
+# ---- uploaded copies (student data) ----
+uploads/
+.test-uploads/
+backend/uploads/
+
+# ---- evaluation reports may contain student answers ----
+ai-service/eval/last_report.json
+ai-service/eval/reports/
+ai-service/eval/golden/real/
+
+# ---- backups, logs, editor ----
+*.bak
+*.bak-*
+*.bak-20261014
+*.log
+npm-debug.*
+.DS_Store
+Thumbs.db
+.claude/
+
+# screenshots from local e2e runs
+/e2e-*.png

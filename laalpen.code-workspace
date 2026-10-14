@@ -1,0 +1,17 @@
+{
+  "folders": [
+    { "name": "🏠 laalpen (root)", "path": "." },
+    { "name": "backend (NestJS)", "path": "backend" },
+    { "name": "ai-service (FastAPI)", "path": "ai-service" },
+    { "name": "app (Expo)", "path": "app" }
+  ],
+  "settings": {
+    "typescript.tsdk": "app/node_modules/typescript/lib",
+    "python.defaultInterpreterPath": "${workspaceFolder:ai-service (FastAPI)}/.venv/bin/python",
+    "editor.formatOnSave": true,
+    "files.exclude": { "**/node_modules": true, "**/.expo": true, "**/__pycache__": true }
+  },
+  "extensions": {
+    "recommendations": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode", "Prisma.prisma", "ms-python.python", "expo.vscode-expo-tools"]
+  }
+}

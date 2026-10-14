@@ -1,0 +1,57 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "1. Database (Docker)",
+      "type": "shell",
+      "command": "docker compose up -d db",
+      "problemMatcher": []
+    },
+    {
+      "label": "2. Backend",
+      "type": "shell",
+      "command": "npm run dev",
+      "options": { "cwd": "${workspaceFolder}/backend" },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "group": "laalpen", "panel": "dedicated" }
+    },
+    {
+      "label": "3. AI service",
+      "type": "shell",
+      "windows": { "command": ".venv\\Scripts\\python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000" },
+      "command": ".venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
+      "options": { "cwd": "${workspaceFolder}/ai-service" },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "group": "laalpen", "panel": "dedicated" }
+    },
+    {
+      "label": "4. App (Expo)",
+      "type": "shell",
+      "command": "npx expo start",
+      "options": { "cwd": "${workspaceFolder}/app" },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "group": "laalpen", "panel": "dedicated" }
+    },
+    {
+      "label": "Start everything",
+      "dependsOrder": "sequence",
+      "dependsOn": ["1. Database (Docker)", "Start servers"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Start servers",
+      "dependsOn": ["2. Backend", "3. AI service", "4. App (Expo)"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Run all tests",
+      "type": "shell",
+      "command": "cd backend && npm test && cd ../ai-service && .venv/bin/python -m pytest -q && cd ../app && npm run typecheck",
+      "windows": { "command": "cd backend; npm test; cd ../ai-service; .venv\\Scripts\\python -m pytest -q; cd ../app; npm run typecheck" },
+      "problemMatcher": []
+    }
+  ]
+}

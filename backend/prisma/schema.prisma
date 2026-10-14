@@ -1,0 +1,892 @@
+// LaalPen database schema. Every change here becomes a migration:
+//   npm run db:migrate -- --name <change-name>
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  TEACHER
+  STUDENT
+  /// parents sign in with their phone number and see all their children
+  PARENT
+}
+
+/// a roster student (exists even without an app account)
+enum StudentStatus {
+  ACTIVE
+  LEFT
+  GRADUATED
+}
+
+/// a student's/parent's request to link their account to a roster student
+enum ClaimStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum EnrollmentState {
+  ACTIVE
+  PROMOTED
+  LEFT
+  GRADUATED
+}
+
+enum BatchStatus {
+  OPEN
+  CLOSED
+  DONE
+}
+
+/// INSTANT = check right away; OVERNIGHT = collected and sent through the half-price Batch API
+enum GradingMode {
+  INSTANT
+  OVERNIGHT
+}
+
+enum TestStatus {
+  DRAFT
+  ACTIVE
+  PUBLISHED
+}
+
+enum SubmissionStatus {
+  PENDING
+  PROCESSING
+  CHECKED
+  NEEDS_REVIEW
+  APPROVED
+  FAILED
+  /// photo problem (blurry, missing page, duplicate...) — not sent to the AI until the teacher fixes or overrides it
+  NEEDS_ATTENTION
+}
+
+/// how sure the AI is about one answer: SURE answers can be bulk-approved
+enum ReviewState {
+  SURE
+  CHECK
+  UNREADABLE
+}
+
+enum QuestionType {
+  THEORY
+  NUMERIC
+  MCQ
+}
+
+enum KeyStatus {
+  DRAFT
+  CONFIRMED
+}
+
+enum ProblemType {
+  BLURRY
+  DARK
+  GLARE
+  CUT_OFF
+  LOW_RESOLUTION
+  BLANK_PAGE
+  DUPLICATE
+  MISSING_PAGES
+  WRONG_STUDENT
+  CHECK_FAILED
+}
+
+enum ChallengeKind {
+  TOTP
+  EMAIL_DEVICE
+}
+
+enum OtpPurpose {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+  DEVICE_CONFIRM
+  /// parent sign-in code sent by SMS/WhatsApp (the "email" column then holds the +92 phone number)
+  PHONE_LOGIN
+}
+
+enum NotificationType {
+  INFO
+  ACCOUNT
+  CHECKING
+  RESULT
+}
+
+model School {
+  id                String            @id @default(cuid())
+  name              String
+  city              String?
+  board             String?
+  /// Code students type when they sign up themselves, e.g. ALN-4821
+  joinCode          String            @unique
+  /// days to keep copy photos after results are published (null = keep)
+  copyRetentionDays Int?
+  createdAt         DateTime          @default(now())
+  users             User[]
+  classes           SchoolClass[]
+  subjects          Subject[]
+  sessions          AcademicSession[]
+  students          StudentProfile[]
+  guardians         Guardian[]
+
+  @@map("schools")
+}
+
+model User {
+  id                String               @id @default(cuid())
+  schoolId          String?
+  school            School?              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  /// parents may have no email (they sign in with their phone)
+  email             String?              @unique
+  name              String
+  phone             String?
+  /// verified +92 phone used to sign in (parents)
+  phoneE164         String?              @unique
+  passwordHash      String?
+  role              Role
+  emailVerified     Boolean              @default(false)
+  firebaseUid       String?              @unique
+  avatarUrl         String?
+  isActive          Boolean              @default(true)
+  /// authenticator-app (TOTP) secret, AES-GCM encrypted with TOTP_ENCRYPTION_KEY
+  totpSecretEnc     String?
+  totpEnabledAt     DateTime?
+  failedLogins      Int                  @default(0)
+  lockedUntil       DateTime?
+  passwordChangedAt DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  backupCodes       BackupCode[]
+  devices           KnownDevice[]
+  challenges        LoginChallenge[]
+  passkeys          Passkey[]
+  sessions          Session[]
+  guardians         Guardian[]
+  claims            ClaimRequest[]
+  comments          CommentBank[]
+  teaching          TeachingAssignment[]
+  student           StudentProfile?
+  notifications     Notification[]
+  refreshTokens     RefreshToken[]
+  pushTokens        PushToken[]
+
+  @@index([schoolId, role])
+  @@map("users")
+}
+
+model SchoolClass {
+  id        String    @id @default(cuid())
+  schoolId  String
+  school    School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  name      String
+  grade     Int
+  createdAt DateTime  @default(now())
+  sections  Section[]
+
+  @@unique([schoolId, name])
+  @@map("classes")
+}
+
+model Section {
+  id                String               @id @default(cuid())
+  classId           String
+  schoolClass       SchoolClass          @relation(fields: [classId], references: [id], onDelete: Cascade)
+  name              String
+  /// code a class's students type to claim their record (rotatable, expires)
+  joinCode          String?              @unique
+  joinCodeExpiresAt DateTime?
+  createdAt         DateTime             @default(now())
+  students          StudentProfile[]
+  teaching          TeachingAssignment[]
+  enrollments       Enrollment[]
+  claims            ClaimRequest[]
+
+  @@unique([classId, name])
+  @@map("sections")
+}
+
+model Subject {
+  id        String               @id @default(cuid())
+  schoolId  String
+  school    School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  name      String
+  code      String?
+  color     String?
+  createdAt DateTime             @default(now())
+  teaching  TeachingAssignment[]
+
+  @@unique([schoolId, name])
+  @@map("subjects")
+}
+
+/// One teacher teaches one subject in one section.
+model TeachingAssignment {
+  id        String   @id @default(cuid())
+  teacherId String
+  teacher   User     @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  sectionId String
+  section   Section  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  subjectId String
+  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  tests     Test[]
+
+  @@unique([sectionId, subjectId])
+  @@index([teacherId])
+  @@map("teaching_assignments")
+}
+
+/// A student on the school roster. The app account (userId) is optional: copies are checked against the
+/// roster, and a student/parent "claims" the record later.
+model StudentProfile {
+  id            String            @id @default(cuid())
+  schoolId      String
+  school        School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  userId        String?           @unique
+  user          User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name          String
+  /// school's own id (admission / GR number): the key for Excel re-imports
+  admissionNo   String?
+  fatherName    String?
+  dob           DateTime?         @db.Date
+  gender        String?
+  /// B-Form (NADRA) number, AES-encrypted; only the last 4 digits are ever shown
+  bFormEnc      String?
+  bFormLast4    String?
+  /// current class section and roll number (history is in Enrollment)
+  sectionId     String
+  section       Section           @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  rollNo        String
+  guardianName  String?
+  guardianEmail String?
+  guardianPhone String?
+  status        StudentStatus     @default(ACTIVE)
+  createdById   String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  submissions   Submission[]
+  enrollments   Enrollment[]
+  guardians     StudentGuardian[]
+  claimCodes    ClaimCode[]
+
+  @@unique([schoolId, admissionNo])
+  @@index([sectionId, status, rollNo])
+  @@index([schoolId, status])
+  @@map("student_profiles")
+}
+
+/// A school year (or an academy batch). Tests and enrollments belong to one.
+model AcademicSession {
+  id          String       @id @default(cuid())
+  schoolId    String
+  school      School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  name        String
+  startsOn    DateTime     @db.Date
+  endsOn      DateTime?    @db.Date
+  isCurrent   Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  enrollments Enrollment[]
+  tests       Test[]
+
+  @@unique([schoolId, name])
+  @@map("academic_sessions")
+}
+
+/// Which class/section/roll a student had in a session, so old marks stay with the right year.
+model Enrollment {
+  id        String          @id @default(cuid())
+  studentId String
+  student   StudentProfile  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  sessionId String
+  session   AcademicSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sectionId String
+  section   Section         @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  rollNo    String
+  state     EnrollmentState @default(ACTIVE)
+  createdAt DateTime        @default(now())
+  endedAt   DateTime?
+
+  @@unique([studentId, sessionId])
+  @@index([sectionId, sessionId])
+  @@map("enrollments")
+}
+
+/// A parent/guardian identified by phone number; one phone links all their children (siblings).
+model Guardian {
+  id        String            @id @default(cuid())
+  schoolId  String
+  school    School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  phone     String
+  name      String?
+  /// the parent's app account (one account can be a guardian in several schools)
+  userId    String?
+  user      User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime          @default(now())
+  students  StudentGuardian[]
+
+  @@unique([schoolId, phone])
+  @@index([phone])
+  @@index([userId])
+  @@map("guardians")
+}
+
+model StudentGuardian {
+  studentId  String
+  student    StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  guardianId String
+  guardian   Guardian       @relation(fields: [guardianId], references: [id], onDelete: Cascade)
+  relation   String?
+
+  @@id([studentId, guardianId])
+  @@index([guardianId])
+  @@map("student_guardians")
+}
+
+/// A student who signed up asks to be linked to a roster record. Exact matches link by themselves;
+/// the rest wait here for the section's teacher (or the admin).
+model ClaimRequest {
+  id               String      @id @default(cuid())
+  schoolId         String
+  sectionId        String
+  section          Section     @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name             String
+  rollNo           String
+  dob              DateTime?   @db.Date
+  admissionNo      String?
+  guardianPhone    String?
+  status           ClaimStatus @default(PENDING)
+  matchedStudentId String?
+  reviewedById     String?
+  reviewedAt       DateTime?
+  rejectReason     String?
+  createdAt        DateTime    @default(now())
+
+  @@index([sectionId, status])
+  @@index([schoolId, status])
+  @@index([userId])
+  @@map("claim_requests")
+}
+
+/// One-time code printed on a claim card (student) or given to a parent whose phone was not on file.
+model ClaimCode {
+  id        String         @id @default(cuid())
+  studentId String
+  student   StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  codeHash  String         @unique
+  kind      String         @default("STUDENT")
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime       @default(now())
+
+  @@index([studentId])
+  @@map("claim_codes")
+}
+
+/// Excel/CSV roster import: dry run first, then commit.
+model ImportJob {
+  id          String    @id @default(cuid())
+  schoolId    String
+  createdById String
+  fileName    String
+  status      String    @default("DRY_RUN")
+  summary     Json
+  rows        Json
+  errors      Json
+  createdAt   DateTime  @default(now())
+  committedAt DateTime?
+
+  @@index([schoolId, createdAt])
+  @@map("import_jobs")
+}
+
+model Test {
+  id             String             @id @default(cuid())
+  assignmentId   String
+  assignment     TeachingAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  title          String
+  description    String?
+  totalMarks     Float              @default(0)
+  testDate       DateTime           @default(now())
+  status         TestStatus         @default(DRAFT)
+  schoolId       String?
+  sessionId      String?
+  session        AcademicSession?   @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  gradingMode    GradingMode        @default(INSTANT)
+  /// the teacher confirms the AI-structured answer key once; every copy is marked against that version
+  keyStatus      KeyStatus          @default(DRAFT)
+  keyVersion     Int                @default(0)
+  keyConfirmedAt DateTime?
+  /// pages each copy should have (missing pages raise a problem)
+  expectedPages  Int?
+  /// "en" or "ur" — Urdu answers go to the Urdu-capable model
+  language       String             @default("en")
+  publishedAt    DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  questions      Question[]
+  submissions    Submission[]
+  keys           AnswerKeyVersion[]
+  problems       ProblemCopy[]
+  batches        GradingBatch[]
+  stats          TestStats?
+
+  @@index([assignmentId, createdAt])
+  @@map("tests")
+}
+
+model Question {
+  id           String       @id @default(cuid())
+  testId       String
+  test         Test         @relation(fields: [testId], references: [id], onDelete: Cascade)
+  number       Int
+  text         String
+  maxMarks     Float
+  answerKey    String
+  type         QuestionType @default(THEORY)
+  finalAnswer  String?
+  alternatives String[]     @default([])
+  /// [{marks, description}]
+  steps        Json?
+  /// [{id: "R1", text}] — the AI must cite these
+  rules        Json?
+  options      String[]     @default([])
+  topic        String?
+  /// where this answer usually is on the page (for "grade by question"): {page, y0, y1}
+  cropRegion   Json?
+  answers      Answer[]
+
+  @@unique([testId, number])
+  @@map("questions")
+}
+
+model Submission {
+  id              String           @id @default(cuid())
+  testId          String
+  test            Test             @relation(fields: [testId], references: [id], onDelete: Cascade)
+  schoolId        String?
+  studentId       String
+  student         StudentProfile   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  status          SubmissionStatus @default(PENDING)
+  obtainedMarks   Float?
+  aiSummary       String?
+  error           String?
+  checkedAt       DateTime?
+  approvedAt      DateTime?
+  /// bumped on every (re)check; a worker only saves results for the run it started
+  checkRun        Int              @default(0)
+  /// when the student/guardian were told about this result (never announced twice)
+  notifiedAt      DateTime?
+  /// answer-key version and model used for the latest AI check
+  keyVersion      Int?
+  model           String?
+  /// photo checks passed for the current pages (re-run after every upload)
+  qualityChecked  Boolean          @default(false)
+  /// teacher chose "check anyway" for a copy with photo problems
+  qualityOverride Boolean          @default(false)
+  /// whole-class capture session this copy belongs to
+  batchId         String?
+  batch           GradingBatch?    @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  /// already counted in its batch's progress (each copy counts once)
+  batchCounted    Boolean          @default(false)
+  /// overnight mode: id of the provider batch it was sent with
+  aiBatchId       String?
+  /// teacher's recorded voice note for the student/parent
+  voiceNotePath   String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  pages           Page[]
+  answers         Answer[]
+  problems        ProblemCopy[]
+
+  @@unique([testId, studentId])
+  @@index([testId, status, updatedAt])
+  @@index([studentId, createdAt])
+  @@index([batchId])
+  @@index([schoolId, status])
+  @@map("submissions")
+}
+
+model Page {
+  id            String     @id @default(cuid())
+  submissionId  String
+  submission    Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  pageNo        Int
+  originalPath  String
+  annotatedPath String?
+  /// denormalised for duplicate-photo lookups inside one test
+  testId        String?
+  sha256        String?
+  /// 64-bit perceptual hash (hex)
+  phash         String?
+  blurScore     Float?
+  brightness    Float?
+  width         Int?
+  height        Int?
+  qualityFlags  String[]   @default([])
+  /// id the phone gave this page before uploading: makes retried uploads idempotent
+  clientLocalId String?    @unique
+  /// QR printed on the page: student/test/page found automatically
+  qrCode        String?
+  createdAt     DateTime   @default(now())
+
+  @@unique([submissionId, pageNo])
+  @@index([testId, phash])
+  @@map("pages")
+}
+
+model Answer {
+  id             String      @id @default(cuid())
+  submissionId   String
+  submission     Submission  @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  questionId     String
+  question       Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  transcription  String?
+  aiMarks        Float?
+  finalMarks     Float?
+  reason         String?
+  comment        String?
+  /// the AI's original red-pen comment (so a teacher edit can be undone)
+  aiComment      String?
+  confidence     Float       @default(0)
+  needsReview    Boolean     @default(false)
+  reviewState    ReviewState @default(SURE)
+  isBlank        Boolean     @default(false)
+  legibility     String?
+  ruleIds        String[]    @default([])
+  /// llm | numeric | mcq | blank | omr
+  method         String?
+  /// marks from every self-consistency run
+  samples        Json?
+  model          String?
+  keyVersion     Int?
+  pageNo         Int?
+  region         Json?
+  teacherEdited  Boolean     @default(false)
+  /// when the teacher looked at / changed this answer (survives undo of an approval)
+  reviewedAt     DateTime?
+  /// why the teacher changed the AI's mark (feeds accuracy monitoring)
+  overrideReason String?
+  updatedAt      DateTime    @updatedAt
+
+  @@unique([submissionId, questionId])
+  @@map("answers")
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType @default(INFO)
+  title     String
+  body      String
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt, id])
+  @@map("notifications")
+}
+
+model EmailOtp {
+  id        String     @id @default(cuid())
+  email     String
+  purpose   OtpPurpose
+  codeHash  String
+  attempts  Int        @default(0)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime   @default(now())
+
+  @@index([email, purpose])
+  @@map("email_otps")
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  /// set when this token was exchanged for a new one; using it again means it was stolen
+  rotatedAt DateTime?
+  sessionId String?
+  session   Session?  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
+  @@index([sessionId])
+  @@map("refresh_tokens")
+}
+
+model PushToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  platform  String?
+  createdAt DateTime @default(now())
+
+  @@map("push_tokens")
+}
+
+/// Every confirmed version of a test's structured answer key (questions snapshot).
+model AnswerKeyVersion {
+  id            String   @id @default(cuid())
+  testId        String
+  test          Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  version       Int
+  questions     Json
+  confirmedById String?
+  createdAt     DateTime @default(now())
+
+  @@unique([testId, version])
+  @@map("answer_key_versions")
+}
+
+/// A copy that needs the teacher's attention before (or instead of) AI checking.
+model ProblemCopy {
+  id           String      @id @default(cuid())
+  schoolId     String
+  testId       String
+  test         Test        @relation(fields: [testId], references: [id], onDelete: Cascade)
+  submissionId String
+  submission   Submission  @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  type         ProblemType
+  pageNo       Int?
+  details      String
+  createdAt    DateTime    @default(now())
+  resolvedAt   DateTime?
+  resolvedById String?
+
+  @@index([testId, resolvedAt])
+  @@index([submissionId, resolvedAt])
+  @@index([schoolId, resolvedAt])
+  @@map("problem_copies")
+}
+
+/// Token counts and cost of every AI call, per school (cost-per-copy report).
+model AiUsage {
+  id           String   @id @default(cuid())
+  schoolId     String
+  testId       String?
+  submissionId String?
+  purpose      String
+  model        String
+  calls        Int      @default(1)
+  inputTokens  Int      @default(0)
+  cachedTokens Int      @default(0)
+  outputTokens Int      @default(0)
+  costUsd      Float    @default(0)
+  createdAt    DateTime @default(now())
+
+  @@index([schoolId, createdAt])
+  @@index([testId])
+  @@map("ai_usage")
+}
+
+/// Shared token bucket so every worker together stays under the AI provider's rate limit.
+model RateBucket {
+  name         String    @id
+  tokens       Float
+  capacity     Float
+  refillPerSec Float
+  blockedUntil DateTime?
+  updatedAt    DateTime  @default(now())
+
+  @@map("rate_buckets")
+}
+
+model BackupCode {
+  id       String    @id @default(cuid())
+  userId   String
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash String
+  usedAt   DateTime?
+
+  @@index([userId])
+  @@map("backup_codes")
+}
+
+/// Devices a user has signed in from (hash of the app's device id). A new one triggers an alert email.
+model KnownDevice {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceHash  String
+  label       String?
+  lastIp      String?
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  @@unique([userId, deviceHash])
+  @@map("known_devices")
+}
+
+/// Second step of a login: authenticator code (admins) or emailed code for a new device.
+model LoginChallenge {
+  id          String        @id @default(cuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind        ChallengeKind
+  deviceHash  String?
+  deviceLabel String?
+  method      String        @default("password")
+  attempts    Int           @default(0)
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime      @default(now())
+
+  @@index([userId, createdAt])
+  @@map("login_challenges")
+}
+
+/// One signed-in device. Refresh tokens rotate inside it; reuse of an old token revokes the whole session.
+model Session {
+  id           String         @id @default(cuid())
+  userId       String
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceHash   String?
+  deviceLabel  String?
+  ip           String?
+  method       String         @default("password")
+  /// last time the user re-entered a password / authenticator code (step-up for sensitive actions)
+  stepUpAt     DateTime?
+  createdAt    DateTime       @default(now())
+  lastSeenAt   DateTime       @default(now())
+  revokedAt    DateTime?
+  revokeReason String?
+  tokens       RefreshToken[]
+
+  @@index([userId, revokedAt])
+  @@map("sessions")
+}
+
+/// Append-only record of who changed what (marks, approvals, keys, roster, security). The database
+/// refuses UPDATE and DELETE on this table.
+model AuditLog {
+  id        String   @id @default(cuid())
+  schoolId  String?
+  actorId   String?
+  actorRole String?
+  action    String
+  entity    String
+  entityId  String
+  before    Json?
+  after     Json?
+  reason    String?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([schoolId, createdAt])
+  @@index([entity, entityId, createdAt])
+  @@map("audit_logs")
+}
+
+/// Teacher's reusable comments ("Unit missing", "یونٹ لکھیں"); most used first.
+model CommentBank {
+  id         String   @id @default(cuid())
+  teacherId  String
+  teacher    User     @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  text       String
+  lang       String   @default("en")
+  uses       Int      @default(0)
+  lastUsedAt DateTime @default(now())
+
+  @@unique([teacherId, text])
+  @@index([teacherId, uses])
+  @@map("comment_bank")
+}
+
+/// A whole-class capture session: the teacher snaps every copy; one "class done" alert at the end.
+model GradingBatch {
+  id          String       @id @default(cuid())
+  testId      String
+  test        Test         @relation(fields: [testId], references: [id], onDelete: Cascade)
+  createdById String
+  status      BatchStatus  @default(OPEN)
+  total       Int          @default(0)
+  done        Int          @default(0)
+  failed      Int          @default(0)
+  problems    Int          @default(0)
+  notifiedAt  DateTime?
+  createdAt   DateTime     @default(now())
+  closedAt    DateTime?
+  submissions Submission[]
+
+  @@index([testId, createdAt])
+  @@map("grading_batches")
+}
+
+/// A request sent through the provider's half-price Batch API ("check overnight").
+model AiBatch {
+  id              String    @id @default(cuid())
+  provider        String
+  providerBatchId String
+  status          String    @default("submitted")
+  submissionIds   String[]
+  runs            Json
+  error           String?
+  createdAt       DateTime  @default(now())
+  completedAt     DateTime?
+
+  @@index([status])
+  @@map("ai_batches")
+}
+
+/// Counters kept up to date when copies are approved (dashboards never COUNT(*) big tables).
+model TestStats {
+  testId      String   @id
+  test        Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  approved    Int      @default(0)
+  sumPercent  Float    @default(0)
+  /// per question: { "<number>": { "sum": marks, "max": maxMarks, "n": count } }
+  perQuestion Json     @default("{}")
+  updatedAt   DateTime @updatedAt
+
+  @@map("test_stats")
+}
+
+/// A passkey (WebAuthn): phone fingerprint / face / Windows Hello / security key. Phishing-resistant sign-in.
+model Passkey {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credentialId String    @unique
+  publicKey    Bytes
+  counter      BigInt    @default(0)
+  transports   String[]  @default([])
+  deviceType   String?
+  backedUp     Boolean   @default(false)
+  name         String?
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+
+  @@index([userId])
+  @@map("passkeys")
+}
+
+/// One-time WebAuthn challenge (registration or sign-in), valid for 5 minutes.
+model WebauthnChallenge {
+  id        String    @id @default(cuid())
+  userId    String?
+  purpose   String
+  challenge String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([expiresAt])
+  @@map("webauthn_challenges")
+}
