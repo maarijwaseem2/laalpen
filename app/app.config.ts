@@ -1,4 +1,4 @@
-import type { ExpoConfig } from 'expo/config';
+﻿import type { ExpoConfig } from 'expo/config';
 
 const iosGoogleScheme = process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME;
 
@@ -13,6 +13,7 @@ const config: ExpoConfig = {
   ios: { supportsTablet: true, bundleIdentifier: 'pk.laalpen.app' },
   android: {
     package: 'pk.laalpen.app',
+      googleServicesFile: './google-services.json',
     adaptiveIcon: { foregroundImage: './assets/adaptive-icon.png', backgroundColor: '#C8102E' },
   },
   web: { bundler: 'metro', output: 'single', favicon: './assets/favicon.png' },
