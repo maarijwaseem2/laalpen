@@ -9,8 +9,11 @@ window.LAALPEN = {
 
   // where people get the app if it is not installed yet (leave '' until you have the link)
   playStoreUrl: '', // e.g. 'https://play.google.com/store/apps/details?id=pk.laalpen.app'
-  apkUrl: '', // optional direct APK download while the app is not on Play Store yet
+  apkUrl: '/LaalPen.apk', // direct APK download while the app is not on Play Store yet (served by this website)
   appStoreUrl: '', // e.g. 'https://apps.apple.com/app/idXXXXXXXXX'
+
+  // the web version of the app (works in any browser; also used when the phone app is not installed)
+  webAppUrl: 'https://laalpen-app.vercel.app',
 
   contactEmail: 'hello@laalpen.pk',
   contactWhatsApp: '', // e.g. '923001234567'

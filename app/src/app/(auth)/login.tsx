@@ -1,7 +1,8 @@
 import { Link, router } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
-import { Button, Chip, Divider, HelperText, Text } from 'react-native-paper';
+import { Chip, Divider, HelperText, Text } from 'react-native-paper';
+import { Button } from '@/components/SafeButton';
 import { TextInput } from '@/components/Input';
 import { AuthFrame } from '@/components/AuthFrame';
 import { useAppTheme } from '@/components/ui';

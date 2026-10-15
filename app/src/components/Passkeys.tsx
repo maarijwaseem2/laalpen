@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { View } from 'react-native';
-import { Button, List, Text } from 'react-native-paper';
+import { List, Text } from 'react-native-paper';
+import { Button } from '@/components/SafeButton';
 import { toast, toastError } from './feedback';
 import { Card, useAppTheme } from './ui';
 import { api } from '@/lib/api';

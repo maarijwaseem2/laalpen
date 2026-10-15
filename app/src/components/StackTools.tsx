@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Platform, View } from 'react-native';
-import { Button, Dialog, Menu, Portal, Text } from 'react-native-paper';
+import { Dialog, Menu, Portal, Text } from 'react-native-paper';
+import { Button } from '@/components/SafeButton';
 import { toast, toastError } from './feedback';
 import { useAppTheme } from './ui';
 import { api } from '@/lib/api';

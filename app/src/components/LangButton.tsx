@@ -1,4 +1,4 @@
-import { Button } from 'react-native-paper';
+import { Button } from '@/components/SafeButton';
 import { toast } from './feedback';
 import { translate, useLang } from '@/lib/i18n';
 

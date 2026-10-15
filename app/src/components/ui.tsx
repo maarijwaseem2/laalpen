@@ -1,7 +1,8 @@
 import { router } from 'expo-router';
 import { type ReactNode, useMemo } from 'react';
 import { ActivityIndicator, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View, type ViewStyle } from 'react-native';
-import { Button, IconButton, Text, useTheme } from 'react-native-paper';
+import { IconButton, Text, useTheme } from 'react-native-paper';
+import { Button } from '@/components/SafeButton';
 import Svg, { Path } from 'react-native-svg';
 import { useLayout } from '@/lib/layout';
 import { PEN_FONT, radius, space, type AppTheme } from '@/lib/theme';

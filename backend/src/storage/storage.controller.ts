@@ -4,6 +4,7 @@ import type { Request, Response } from 'express';
 import { Public } from '../common/decorators.js';
 import { env } from '../config/env.js';
 import { StorageService } from './storage.service.js';
+import { sniffImage } from '../common/image-type.js';
 
 const IMAGE = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
@@ -43,7 +44,9 @@ export class StorageController {
       chunks.push(chunk);
     }
     if (!size) throw new BadRequestException('Empty upload');
-    await this.storage.save(key, Buffer.concat(chunks), type);
+    const body = Buffer.concat(chunks);
+    if (!sniffImage(body)) throw new BadRequestException('Only JPG, PNG or WEBP images');
+    await this.storage.save(key, body, type);
     return { ok: true, key, size };
   }
 }

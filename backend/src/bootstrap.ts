@@ -4,10 +4,28 @@ import { env } from './config/env.js';
 
 /** Shared app setup used by main.ts and the automated tests. */
 export function configureApp(app: INestApplication) {
-  // behind a hosting proxy / load balancer, read the real client IP (used for rate limits)
-  (app.getHttpAdapter().getInstance() as { set?: (k: string, v: unknown) => void }).set?.('trust proxy', 1);
+  // behind a hosting proxy / load balancer, read the real client IP (used for rate limits and audit logs).
+  // TRUST_PROXY = number of proxies in front of the app (Render: 2-3; one plain proxy: 1), or an Express trust value.
+  const tp = process.env.TRUST_PROXY?.trim();
+  const trust = !tp ? 1 : /^\d+$/.test(tp) ? Number(tp) : tp === 'true' ? true : tp === 'false' ? false : tp;
+  (app.getHttpAdapter().getInstance() as { set?: (k: string, v: unknown) => void }).set?.('trust proxy', trust);
   const http = app.getHttpAdapter().getInstance() as { disable?: (k: string) => void; use?: (fn: (req: unknown, res: { setHeader: (k: string, v: string) => void }, next: () => void) => void) => void };
   http.disable?.('x-powered-by');
+  // Hosts behind Cloudflare (Render) put the real visitor IP in a header the visitor cannot forge, e.g. CLIENT_IP_HEADER=cf-connecting-ip.
+  // Without this every request looks like it comes from the host's proxies, so per-IP rate limits and audit IPs are wrong.
+  const ipHeader = process.env.CLIENT_IP_HEADER?.trim().toLowerCase();
+  if (ipHeader) {
+    http.use?.((req, _res, next) => {
+      const r = req as { headers: Record<string, string | string[] | undefined> };
+      const raw = r.headers[ipHeader];
+      const ip = (Array.isArray(raw) ? raw[0] : raw)?.split(',')[0]?.trim();
+      if (ip) {
+        Object.defineProperty(r, 'ip', { value: ip, configurable: true });
+        Object.defineProperty(r, 'ips', { value: [ip], configurable: true });
+      }
+      next();
+    });
+  }
   // basic security headers (an API never needs to be framed or sniffed as HTML)
   http.use?.((_req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');

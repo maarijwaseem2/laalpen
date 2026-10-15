@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import io
 import json
 import logging
@@ -38,7 +39,9 @@ if os.environ.get("SENTRY_DSN"):
     except ImportError:  # pragma: no cover
         logging.getLogger("ai-service").warning("SENTRY_DSN is set but sentry-sdk is not installed")
 
-app = FastAPI(title="LaalPen AI Service", version="2.1.0")
+# API docs only when asked for (AI_DOCS=true): in production the endpoint list is not advertised to the internet
+_docs = os.environ.get("AI_DOCS", "").lower() == "true"
+app = FastAPI(title="LaalPen AI Service", version="2.1.0", docs_url="/docs" if _docs else None, redoc_url="/redoc" if _docs else None, openapi_url="/openapi.json" if _docs else None)
 
 
 @app.exception_handler(RetryableAIError)
@@ -53,7 +56,7 @@ async def _permanent(_, e: PermanentAIError):
 
 
 def require_token(x_service_token: str | None = Header(default=None), settings: Settings = Depends(get_settings)):
-    if x_service_token != settings.service_token:
+    if not x_service_token or not hmac.compare_digest(x_service_token.encode(), settings.service_token.encode()):
         raise HTTPException(status_code=401, detail="Invalid service token")
 
 

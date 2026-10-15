@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { AppThrottlerGuard } from './common/throttler.guard.js';
 import { PrismaModule } from './prisma/prisma.module.js';
@@ -23,11 +23,12 @@ import { InsightsModule } from './insights/insights.module.js';
 import { ShareModule } from './share/share.module.js';
 import { HealthController } from './health/health.controller.js';
 import { AuthGuard } from './common/auth.guard.js';
+import { IdempotencyInterceptor } from './common/idempotency.interceptor.js';
 import { env } from './config/env.js';
 
 @Module({
   imports: [
-    ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: env.isTest ? 10_000 : 300 }], skipIf: () => env.isTest }),
+    ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: env.isTest ? 10_000 : 300 }], skipIf: () => env.isTest && process.env.THROTTLE_IN_TESTS !== 'true' }),
     PrismaModule,
     MailModule,
     StorageModule,
@@ -52,6 +53,7 @@ import { env } from './config/env.js';
   providers: [
     { provide: APP_GUARD, useClass: AppThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
+    { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor },
   ],
 })
 export class AppModule {}

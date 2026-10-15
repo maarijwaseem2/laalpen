@@ -1,6 +1,7 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { View } from 'react-native';
-import { Button, Text } from 'react-native-paper';
+import { Text } from 'react-native-paper';
+import { Button } from '@/components/SafeButton';
 import { Card, Empty, ErrorView, Loading, PageHeader, Screen, useAppTheme } from '@/components/ui';
 import { api } from '@/lib/api';
 import { timeAgo } from '@/lib/format';

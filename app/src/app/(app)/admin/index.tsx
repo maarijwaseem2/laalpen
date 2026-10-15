@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { View } from 'react-native';
-import { Button, Text } from 'react-native-paper';
+import { Text } from 'react-native-paper';
+import { Button } from '@/components/SafeButton';
 import { Card, Empty, ErrorView, Grid, Loading, PageHeader, Screen, SectionTitle, Stat, TestTag, useAppTheme } from '@/components/ui';
 import { api } from '@/lib/api';
 import { fmtShort, greeting } from '@/lib/format';

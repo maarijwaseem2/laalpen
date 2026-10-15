@@ -19,6 +19,7 @@
       if (cfg.appStoreUrl) links.push(['App Store', cfg.appStoreUrl]);
       if (cfg.apkUrl) links.push(['Android APK', cfg.apkUrl]);
     }
+    if (cfg.webAppUrl) links.push(['Use LaalPen in the browser', cfg.webAppUrl]);
     return links;
   }
 

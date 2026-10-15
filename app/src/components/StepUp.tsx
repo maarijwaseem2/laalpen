@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Button, Dialog, HelperText, Portal, Text } from 'react-native-paper';
+import { Dialog, HelperText, Portal, Text } from 'react-native-paper';
+import { Button } from '@/components/SafeButton';
 import { create } from 'zustand';
 import { TextInput } from './Input';
 import { api } from '@/lib/api';

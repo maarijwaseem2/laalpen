@@ -1,4 +1,4 @@
-﻿import type { ExpoConfig } from 'expo/config';
+import type { ExpoConfig } from 'expo/config';
 
 const iosGoogleScheme = process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME;
 
@@ -28,6 +28,9 @@ const config: ExpoConfig = {
     ...(iosGoogleScheme ? [['@react-native-google-signin/google-signin', { iosUrlScheme: iosGoogleScheme }] as [string, object]] : []),
   ],
   experiments: { typedRoutes: false },
+  owner: 'maarijwaseem2',
+  // EAS project (push notifications + cloud builds)
+  extra: { eas: { projectId: 'd75418a0-204d-440d-be62-47855a189730' } },
 };
 
 export default config;

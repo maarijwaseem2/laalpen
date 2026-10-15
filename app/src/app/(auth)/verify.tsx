@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Button, HelperText } from 'react-native-paper';
+import { HelperText } from 'react-native-paper';
+import { Button } from '@/components/SafeButton';
 import { TextInput } from '@/components/Input';
 import { AuthFrame } from '@/components/AuthFrame';
 import { toast } from '@/components/feedback';

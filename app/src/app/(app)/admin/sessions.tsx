@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { View } from 'react-native';
-import { Button, Checkbox, Chip, Text } from 'react-native-paper';
+import { Checkbox, Chip, Text } from 'react-native-paper';
+import { Button } from '@/components/SafeButton';
 import { FormDialog, toast, toastError, useDialog } from '@/components/feedback';
 import { TextInput } from '@/components/Input';
 import { Card, ErrorView, Loading, PageHeader, Screen, SectionTitle, Tag, useAppTheme } from '@/components/ui';

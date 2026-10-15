@@ -2,7 +2,8 @@ import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder, use
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Platform, ScrollView, View } from 'react-native';
-import { Button, Dialog, Portal, Text } from 'react-native-paper';
+import { Dialog, Portal, Text } from 'react-native-paper';
+import { Button } from '@/components/SafeButton';
 import { FormDialog, toast, toastError, useDialog } from './feedback';
 import { useAppTheme } from './ui';
 import { api } from '@/lib/api';

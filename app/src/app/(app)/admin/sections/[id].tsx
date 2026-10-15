@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import { View } from 'react-native';
-import { Button, IconButton, Text } from 'react-native-paper';
+import { IconButton, Text } from 'react-native-paper';
+import { Button } from '@/components/SafeButton';
 import { FormDialog, toast, toastError, useDialog } from '@/components/feedback';
 import { Avatar, Card, Empty, ErrorView, Loading, PageHeader, Screen, SectionTitle, useAppTheme } from '@/components/ui';
 import { api } from '@/lib/api';

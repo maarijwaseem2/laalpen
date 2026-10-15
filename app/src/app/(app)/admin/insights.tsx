@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
-import { Button, SegmentedButtons, Text } from 'react-native-paper';
+import { SegmentedButtons, Text } from 'react-native-paper';
+import { Button } from '@/components/SafeButton';
 import { toast, toastError } from '@/components/feedback';
 import { Card, Empty, ErrorView, Grid, Loading, PageHeader, Screen, SectionTitle, Stat, Tag, useAppTheme } from '@/components/ui';
 import { api } from '@/lib/api';

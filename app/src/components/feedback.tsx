@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
-import { Button, Dialog, HelperText, Menu, Portal, Snackbar, Text } from 'react-native-paper';
+import { Dialog, HelperText, Menu, Portal, Snackbar, Text } from 'react-native-paper';
+import { Button } from '@/components/SafeButton';
 import { TextInput } from '@/components/Input';
 import { create } from 'zustand';
 import { errorText } from '@/lib/query';

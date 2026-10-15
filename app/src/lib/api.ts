@@ -64,14 +64,34 @@ async function parse(res: Response) {
   return body;
 }
 
-export async function request<T = any>(path: string, init: { method?: string; body?: unknown; form?: FormData; auth?: boolean } = {}): Promise<T> {
+const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+/** identical write requests that are still on their way: a double tap shares the first request instead of sending a second */
+const inflight = new Map<string, Promise<unknown>>();
+const newKey = () =>
+  (globalThis as { crypto?: { randomUUID?: () => string } }).crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+
+export function request<T = any>(path: string, init: { method?: string; body?: unknown; form?: FormData; auth?: boolean } = {}): Promise<T> {
+  const method = init.method ?? (init.body !== undefined || init.form ? 'POST' : 'GET');
+  if (!MUTATING.has(method) || init.form) return send<T>(path, init, method);
+  const sig = `${method} ${path} ${init.body === undefined ? '' : JSON.stringify(init.body)}`;
+  const running = inflight.get(sig);
+  if (running) return running as Promise<T>;
+  const p = send<T>(path, init, method).finally(() => inflight.delete(sig));
+  inflight.set(sig, p);
+  return p;
+}
+
+async function send<T>(path: string, init: { method?: string; body?: unknown; form?: FormData; auth?: boolean }, method: string): Promise<T> {
+  // one key per user action, re-sent on automatic retries (token refresh, step-up) so the server runs it only once
+  const idempotencyKey = MUTATING.has(method) ? newKey() : null;
   const doFetch = () => {
     const token = useAuth.getState().accessToken;
     const headers: Record<string, string> = {};
     if (init.auth !== false && token) headers.authorization = `Bearer ${token}`;
     if (init.body !== undefined) headers['content-type'] = 'application/json';
+    if (idempotencyKey) headers['idempotency-key'] = idempotencyKey;
     return fetch(`${API_URL}/api${path}`, {
-      method: init.method ?? (init.body !== undefined || init.form ? 'POST' : 'GET'),
+      method,
       headers,
       body: init.form ?? (init.body !== undefined ? JSON.stringify(init.body) : undefined),
     });

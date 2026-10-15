@@ -15,6 +15,7 @@ import { RosterService } from '../roster/roster.service.js';
 import { normalizePage } from '../common/images.js';
 import type { AuthUser } from '../common/decorators.js';
 import type { ConfirmKeyDto, CreateTestDto, QuestionDto, UpdateAnswerDto, UpdateTestDto } from './teacher.dto.js';
+import { sniffImage } from '../common/image-type.js';
 
 const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/jpg']);
 const emptyCounts = () => ({ uploaded: 0, pending: 0, checked: 0, review: 0, approved: 0, failed: 0, attention: 0 });
@@ -391,7 +392,7 @@ export class TeacherService {
   /** AI turns the teacher's typed / photographed key into a structured draft. Nothing is saved. */
   async draftKey(teacherId: string, testId: string, text: string | undefined, files: Express.Multer.File[] = []) {
     const t = await this.ownTest(teacherId, testId);
-    for (const f of files) if (!ALLOWED.has(f.mimetype)) throw new BadRequestException(`${f.originalname}: only JPG, PNG or WEBP photos are allowed`);
+    for (const f of files) if (!ALLOWED.has(f.mimetype) || !sniffImage(f.buffer)) throw new BadRequestException(`${f.originalname}: only JPG, PNG or WEBP photos are allowed`);
     const res = await this.ai.parseKey(
       { subject: t.assignment.subject.name, class_name: t.assignment.section.schoolClass.name, text: text ?? '', questions: t.questions.map((q) => toAiQuestion(publicQuestion(q))) },
       files.map((f, i) => ({ pageNo: i + 1, data: f.buffer, filename: f.originalname || `key-${i + 1}.jpg` })),
@@ -458,7 +459,7 @@ export class TeacherService {
     if (t.keyStatus !== 'CONFIRMED') throw new BadRequestException({ message: 'Confirm the answer key first, then upload copies.', code: 'KEY_NOT_CONFIRMED' });
     if (!files?.length) throw new BadRequestException('Add at least one page photo');
     for (const f of files) {
-      if (!ALLOWED.has(f.mimetype)) throw new BadRequestException(`${f.originalname}: only JPG, PNG or WEBP photos are allowed`);
+      if (!ALLOWED.has(f.mimetype) || !sniffImage(f.buffer)) throw new BadRequestException(`${f.originalname}: only JPG, PNG or WEBP photos are allowed`);
     }
     const student = await this.prisma.studentProfile.findUnique({ where: { id: studentId } });
     if (!student || student.sectionId !== t.assignment.sectionId || student.status !== 'ACTIVE') throw new NotFoundException('Student is not in this class');
