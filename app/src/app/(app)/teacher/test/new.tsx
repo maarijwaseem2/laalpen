@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { HelperText, IconButton, SegmentedButtons, Text } from 'react-native-paper';
 import { Button } from '@/components/SafeButton';
@@ -17,7 +17,9 @@ const blank = (): Q => ({ text: '', maxMarks: '5', answerKey: '' });
 export default function NewTest() {
   const t = useAppTheme();
   const { assignmentId } = useLocalSearchParams<{ assignmentId: string }>();
-  const a = useQuery({ queryKey: ['teacher', 'assignment', assignmentId], queryFn: () => api.get(`/teacher/assignments/${assignmentId}`) });
+  const a = useQuery({ queryKey: ['teacher', 'assignment', assignmentId], queryFn: () => api.get(`/teacher/assignments/${assignmentId}`), enabled: !!assignmentId });
+  // Opened without a class (old link or typed URL): go pick one instead of calling the API with 'undefined'.
+  useEffect(() => { if (!assignmentId) router.replace('/teacher/classes'); }, [assignmentId]);
   const [title, setTitle] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [description, setDescription] = useState('');
