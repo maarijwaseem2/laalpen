@@ -18,3 +18,13 @@ for (const f of walk(join(dist, '_expo'))) {
   }
 }
 console.log(`vercel-prep: ${n} file(s) updated`);
+
+// One domain for everything: the website (public/home.html + its css/js/fonts) is the home page "/",
+// and the Expo web app shell becomes app.html, served for every app route (/login, /teacher, ...) by the
+// rewrites in public/vercel.json (Vercel and nginx serve real files first, so "/" is the website).
+// public/index.html can't hold the website: Expo uses that file as the app's HTML template.
+if (existsSync(join(dist, 'home.html'))) {
+  renameSync(join(dist, 'index.html'), join(dist, 'app.html'));
+  renameSync(join(dist, 'home.html'), join(dist, 'index.html'));
+  console.log('vercel-prep: website -> index.html, app shell -> app.html');
+}

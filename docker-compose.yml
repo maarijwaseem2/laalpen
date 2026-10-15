@@ -86,17 +86,6 @@ services:
       timeout: 5s
       retries: 10
 
-  web:
-    build: ./web
-    restart: unless-stopped
-    ports:
-      - "${LP_WEB_PORT:-8090}:80"
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
 volumes:
   pgdata:
   uploads:

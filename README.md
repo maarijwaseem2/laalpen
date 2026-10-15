@@ -6,11 +6,10 @@ Teacher poori class ki copies ki photo leta hai → AI har sawal check karke **l
 | --- | --- | --- |
 | `backend/` | NestJS + Prisma 7 + PostgreSQL — data, login/2FA/passkeys, roster, queue (pg-boss), notifications | 4000 |
 | `ai-service/` | FastAPI (Python) — OpenAI/Gemini checking, photo gate, QR + OMR scanning, laal-pen annotation | 8000 |
-| `app/` | Expo + React Native Paper — **ek hi code: Android, iOS aur Web** (English + اردو) | 8081 |
-| `web/` | Website (static) — "Open app" button mobile app kholta hai | 8090 |
+| `app/` | Expo + React Native Paper — **ek hi code: Android, iOS aur Web** (English + اردو). Website bhi yahin hai (`app/public/home.html` → `/`, app `/login` waghera par; dekhein `app/WEBSITE.md`) | 8081 |
 | `e2e/` | Browser test jo poora flow (12 steps) chalata hai | — |
 
-**Teen zip:** `backend.zip` (backend + ai-service + docker-compose + e2e + README), `app.zip` (app — Android/iOS/web), `web.zip` (website). Teeno ko **ek hi jagah** unzip karo — sab `laalpen/` folder mein chale jayenge (`laalpen/backend`, `laalpen/ai-service`, `laalpen/app`, `laalpen/web`).
+**Live:** website + web app ek hi domain par — https://laalpen.vercel.app (website `/`, app `/login`, Android APK `/LaalPen.apk`); API https://laalpen-backend.onrender.com. Purana `web/` folder ab `app/public/` mein hai (`app/WEBSITE.md`).
 
 `ROADMAP.md` mein saare phases (A, B, C) aur un ka status hai.
 
@@ -201,13 +200,13 @@ AI accuracy (asli copies, teacher ke marks se mila kar): `ai-service/eval/` (REA
 
 ## 9. Docker se chalana
 
-Docker Desktop se poora LaalPen (database + backend + AI + app + website) ek command se chalta hai. Aap ka apna PostgreSQL (port 5432) is se nahi takrata — Docker wala database **port 5433** par hai.
+Docker Desktop se poora LaalPen (database + backend + AI + app/website) ek command se chalta hai. Aap ka apna PostgreSQL (port 5432) is se nahi takrata — Docker wala database **port 5433** par hai.
 
 **Pehli dafa:**
 
 1. Docker Desktop kholein aur intezar karein jab tak "Engine running" na likha aaye.
 2. `backend/.env` aur `ai-service/.env` maujood hon (`.env.example` copy kar ke). `ai-service/.env` mein `OPENAI_API_KEY=sk-...` aur `OPENAI_MODEL=gpt-5-mini` ho. `DATABASE_URL` aur `AI_SERVICE_URL` Docker khud set karta hai (`docker-compose.yml`), in ko badalne ki zaroorat nahi. Mazeed: `.env.docker.example`.
-3. **Local servers band karein** (backend 4000, app 8081, website 8090 wali windows), warna ports takrayenge. Ya ports badal dein: `$env:LP_API_PORT=14000; $env:LP_APP_PORT=18081; $env:LP_WEB_PORT=18090; docker compose up -d` (AI host port default 8001, `LP_AI_PORT`).
+3. **Local servers band karein** (backend 4000, app 8081 wali windows), warna ports takrayenge. Ya ports badal dein: `$env:LP_API_PORT=14000; $env:LP_APP_PORT=18081; docker compose up -d` (AI host port default 8001, `LP_AI_PORT`).
 
 **Chalana (root folder `laalpen/` se):**
 
@@ -223,8 +222,7 @@ Startup par backend khud `prisma migrate deploy` aur seed chalata hai (demo scho
 | db (PostgreSQL 16) | `localhost:5433` (user `postgres`, password `postgres`, db `laalpen`) | `pg_isready` |
 | ai | http://localhost:8001/health (container ke andar 8000) | `/health` |
 | backend | http://localhost:4000/api/health | `/api/health` |
-| app (Expo web, nginx) | http://localhost:8081 | `/` |
-| web (website, nginx) | http://localhost:8090 | `/` |
+| app (website `/` + Expo web app `/login`, nginx) | http://localhost:8081 | `/` |
 
 **Roz ke commands:**
 

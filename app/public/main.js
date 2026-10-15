@@ -1,4 +1,4 @@
-/* LaalPen website: the "Open app" buttons open the installed MOBILE app (never the web version). */
+/* LaalPen website: "Open app" opens the web app (/login) on a computer and the installed app on a phone (web app if not installed). */
 (function () {
   const cfg = window.LAALPEN || {};
   const ua = navigator.userAgent || '';
@@ -65,7 +65,7 @@
   function openApp() {
     if (isAndroid) {
       // Chrome opens the app if installed, otherwise goes to the fallback URL itself
-      const fallback = cfg.playStoreUrl || cfg.apkUrl || pageUrl + '?getapp=1';
+      const fallback = cfg.webAppUrl ? new URL(cfg.webAppUrl, location.href).href : cfg.playStoreUrl || cfg.apkUrl || pageUrl + '?getapp=1';
       location.href =
         'intent://open#Intent;scheme=' + cfg.appScheme + ';package=' + cfg.androidPackage +
         ';S.browser_fallback_url=' + encodeURIComponent(fallback) + ';end';
@@ -74,10 +74,12 @@
     }
     if (isIOS) {
       location.href = cfg.appScheme + '://';
-      fallbackIfStillHere(1600, () => (cfg.appStoreUrl ? (location.href = cfg.appStoreUrl) : showGetApp()));
+      fallbackIfStillHere(1600, () => (location.href = cfg.webAppUrl || cfg.appStoreUrl || pageUrl + '?getapp=1'));
       return;
     }
-    // computer: there is no mobile app here, so show a code to open it on the phone
+    // computer: open the web app on this same site
+    if (cfg.webAppUrl) { location.href = cfg.webAppUrl; return; }
+    // (no web app configured) show a code to open it on the phone
     const d = document.getElementById('open-dialog');
     const holder = document.getElementById('qr');
     holder.innerHTML = '';
