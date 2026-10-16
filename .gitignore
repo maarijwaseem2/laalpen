@@ -13,6 +13,23 @@
 *.p12
 *.jks
 *.keystore
+keystore.properties
+*.mobileprovision
+
+# Firebase / Google native configs, any path (Android + iOS)
+google-services.json
+**/google-services.json
+GoogleService-Info.plist
+**/GoogleService-Info.plist
+**/service-account*.json
+**/serviceAccount*.json
+**/*-firebase-adminsdk-*.json
+
+# Local secret directories
+.secrets/
+**/.secrets/
+/secrets/
+/credentials/
 
 # ---- dependencies / virtualenvs ----
 node_modules/
