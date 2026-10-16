@@ -32,7 +32,7 @@ export async function fetchWithTimeout(url: string, init: RequestInit, ms: numbe
 
 async function ping(ms: number) {
   try {
-    return (await fetchWithTimeout(`${API_URL}/api/health`, { method: 'GET' }, ms)).ok;
+    return (await fetchWithTimeout(`${API_URL}/api/health/live`, { method: 'GET' }, ms)).ok;
   } catch {
     return false;
   }

@@ -22,6 +22,7 @@ import { ScanModule } from './scan/scan.module.js';
 import { InsightsModule } from './insights/insights.module.js';
 import { ShareModule } from './share/share.module.js';
 import { HealthController } from './health/health.controller.js';
+import { KeepAliveService } from './health/keepalive.service.js';
 import { AuthGuard } from './common/auth.guard.js';
 import { IdempotencyInterceptor } from './common/idempotency.interceptor.js';
 import { env } from './config/env.js';
@@ -51,6 +52,7 @@ import { env } from './config/env.js';
   ],
   controllers: [HealthController],
   providers: [
+    KeepAliveService,
     { provide: APP_GUARD, useClass: AppThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor },

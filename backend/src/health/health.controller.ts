@@ -1,5 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '../common/decorators.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { env } from '../config/env.js';
@@ -8,6 +9,14 @@ import { env } from '../config/env.js';
 @Controller('health')
 export class HealthController {
   constructor(private readonly prisma: PrismaService) {}
+
+  /** Liveness only (no database, no AI call): for wake-up pings and keep-alive, so they don't also wake the database and the AI service. */
+  @Public()
+  @SkipThrottle()
+  @Get('live')
+  live() {
+    return { status: 'ok' };
+  }
 
   @Public()
   @Get()

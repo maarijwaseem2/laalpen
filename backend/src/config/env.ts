@@ -71,6 +71,13 @@ export const env = {
   /** secret used to encrypt sensitive fields such as B-Form numbers */
   dataEncryptionKey: str('DATA_ENCRYPTION_KEY', 'dev-data-key-change-me-32-characters!!'),
 
+  /** how often the "check now" queue looks for new copies (seconds); other queues poll less often */
+  queuePollSeconds: Math.max(0.5, num('QUEUE_POLL_SECONDS', 2)),
+  /** keep a free host (Render) awake: ping this public URL every KEEPALIVE_MINUTES during KEEPALIVE_HOURS (e.g. "9-21", TZ_SCHEDULE time) */
+  keepAliveUrl: process.env.KEEPALIVE_URL || '',
+  keepAliveHours: process.env.KEEPALIVE_HOURS || '',
+  keepAliveMinutes: Math.min(14, Math.max(1, num('KEEPALIVE_MINUTES', 10))),
+
   // ----- file storage: "local" (free, on this computer), "db" (inside PostgreSQL: survives restarts on hosts
   //       without a disk, e.g. Render free) or "s3" (Cloudflare R2 / AWS S3 / any S3-compatible) -----
   storageDriver: str('STORAGE_DRIVER', 'local') as 'local' | 'db' | 's3',

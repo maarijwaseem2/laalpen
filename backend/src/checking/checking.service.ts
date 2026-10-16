@@ -107,11 +107,13 @@ export class CheckingService implements OnModuleInit, OnModuleDestroy {
     const handler = (mode: CheckMode) => async (jobs: { data: { submissionId: string; now?: boolean }; retryCount?: number }[]) => {
       for (const job of jobs) await this.runJob(job.data.submissionId, mode, job.retryCount ?? 0, !!job.data.now);
     };
-    const opts = { pollingIntervalSeconds: 1 };
-    await this.boss.work(QUEUE_INTERACTIVE, { ...opts, localConcurrency: env.checkInteractiveConcurrency }, handler('interactive'));
-    await this.boss.work(QUEUE_BULK, { ...opts, localConcurrency: env.checkBulkConcurrency }, handler('bulk'));
-    await this.boss.work(LEGACY_QUEUE, { ...opts, localConcurrency: 1 }, handler('interactive'));
-    await this.boss.work<{ submissionId: string }>(QUEUE_DLQ, { pollingIntervalSeconds: 5 }, async (jobs) => {
+    // every worker polls the database on its own: on a small server (Render free: 0.1 CPU) 1-second polls of every
+    // queue cost real CPU and database time, so the teacher's "check now" queue polls fastest and the rest slower
+    const poll = env.queuePollSeconds;
+    await this.boss.work(QUEUE_INTERACTIVE, { pollingIntervalSeconds: poll, localConcurrency: env.checkInteractiveConcurrency }, handler('interactive'));
+    await this.boss.work(QUEUE_BULK, { pollingIntervalSeconds: Math.max(poll, Math.min(10, poll * 5)), localConcurrency: env.checkBulkConcurrency }, handler('bulk'));
+    await this.boss.work(LEGACY_QUEUE, { pollingIntervalSeconds: Math.max(poll, Math.min(15, poll * 5)), localConcurrency: 1 }, handler('interactive'));
+    await this.boss.work<{ submissionId: string }>(QUEUE_DLQ, { pollingIntervalSeconds: Math.max(poll, Math.min(30, poll * 10)) }, async (jobs) => {
       for (const job of jobs) {
         reportError(new Error('Copy failed after all retries'), { submissionId: job.data.submissionId });
         await this.markFailed(job.data.submissionId, 'Checking failed after several tries. Tap "Check again" or re-upload the photos.');

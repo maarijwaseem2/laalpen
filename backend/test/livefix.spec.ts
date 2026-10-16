@@ -4,6 +4,7 @@ import { api, bootApp } from './helpers.js';
 import { env } from '../src/config/env.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { StorageService } from '../src/storage/storage.service.js';
+import { hourIn, inWindow, parseHours } from '../src/health/keepalive.service.js';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 
@@ -63,5 +64,21 @@ describe('Live fixes — db file storage, device-confirm skip domains', () => {
     expect(demo.body.accessToken).toBeTruthy();
     const real = await api(app).post('/api/auth/login').send({ email: 'real@skip.test', password: 'Blue-Window-56', deviceId: 'android-new' });
     expect(real.body).toMatchObject({ mfaRequired: true, kind: 'EMAIL_DEVICE' });
+  });
+
+  it('liveness endpoint answers without touching the database or AI service', async () => {
+    const r = await api(app).get('/api/health/live').expect(200);
+    expect(r.body).toEqual({ status: 'ok' });
+  });
+
+  it('keep-alive hours: parses the window, wraps past midnight, reads the school time zone', () => {
+    expect(parseHours('9-21')).toEqual([9, 21]);
+    expect(parseHours('')).toBeNull();
+    expect(parseHours('nonsense')).toBeNull();
+    expect(inWindow(9, [9, 21])).toBe(true);
+    expect(inWindow(21, [9, 21])).toBe(false);
+    expect(inWindow(23, [22, 6])).toBe(true);
+    expect(inWindow(12, [22, 6])).toBe(false);
+    expect(hourIn('Asia/Karachi', new Date('2026-10-16T04:30:00Z'))).toBe(9);
   });
 });

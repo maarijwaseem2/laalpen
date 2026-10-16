@@ -1,0 +1,20 @@
+# Wakes the free Render API (and its database) shortly before school hours, so the first teacher of the day
+# doesn't wait for a cold start. During the day the API keeps itself awake (KEEPALIVE_URL / KEEPALIVE_HOURS).
+# One short run per day: well inside GitHub's free Actions minutes.
+name: Wake LaalPen API
+on:
+  schedule:
+    - cron: '40 3 * * 1-6' # 08:40 Pakistan time (UTC+5), Monday-Saturday
+  workflow_dispatch:
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping the API until it answers (a cold start takes about 1-2 minutes)
+        run: |
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS -m 150 https://laalpen-backend.onrender.com/api/health/live; then echo; echo "API is awake"; exit 0; fi
+            sleep 10
+          done
+          echo "API did not answer"; exit 1

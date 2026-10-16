@@ -25,6 +25,7 @@ export default defineConfig({
       AI_SERVICE_TOKEN: 'test-ai-token',
       BREVO_API_KEY: '',
       CHECKING_CONCURRENCY: '1',
+      QUEUE_POLL_SECONDS: '1',
       AI_REQUESTS_PER_MINUTE: '100000',
       // most specs log admins in with a password only; security.spec.ts turns these on
       REQUIRE_ADMIN_2FA: 'false',

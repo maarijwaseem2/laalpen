@@ -131,5 +131,5 @@
   }
 
   // wake the free API server (it sleeps when idle) so the app is ready by the time the visitor logs in
-  if (cfg.apiUrl && window.fetch) fetch(cfg.apiUrl + '/api/health', { mode: 'no-cors', cache: 'no-store' }).catch(function () {});
+  if (cfg.apiUrl && window.fetch) fetch(cfg.apiUrl + '/api/health/live', { mode: 'no-cors', cache: 'no-store' }).catch(function () {});
 })();
