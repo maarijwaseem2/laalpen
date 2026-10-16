@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="750" viewBox="0 0 1200 750" role="img" aria-label="Placeholder for the teacher capture screenshot">
+  <rect width="1200" height="750" fill="#F7F4EF"/>
+  <rect x="48" y="48" width="1104" height="654" rx="16" fill="#FFFFFF" stroke="#1B2A4A" stroke-width="2"/>
+  <rect x="48" y="48" width="1104" height="8" fill="#C8102E"/>
+  <text x="600" y="300" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#1B2A4A">PLACEHOLDER</text>
+  <text x="600" y="350" text-anchor="middle" font-family="Georgia, serif" font-size="36" fill="#C8102E">Teacher capture</text>
+  <text x="600" y="410" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#5C6B7A">Replace docs/screenshots/02-teacher-capture.svg</text>
+  <text x="600" y="446" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#5C6B7A">with the class photo / pile-of-copies screen</text>
+</svg>

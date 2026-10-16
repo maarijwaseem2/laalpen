@@ -4,4 +4,6 @@ uploads/
 .test-uploads/
 src/generated/
 .env
+.env.*
+!.env.example
 *.log
