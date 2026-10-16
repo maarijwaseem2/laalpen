@@ -4,10 +4,12 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize, resolve } from 'node:path';
 import { env } from '../config/env.js';
+import { PrismaService } from '../prisma/prisma.service.js';
 
 /**
- * File storage with two drivers:
+ * File storage with three drivers:
  * - local (default, free): files under UPLOAD_DIR on this computer;
+ * - db (free): bytes kept in PostgreSQL, for hosts whose disk is wiped on every restart (Render free);
  * - s3: Cloudflare R2 (10 GB free, no download fees), AWS S3 or any S3-compatible bucket.
  * Keys look like "submissions/<id>/page-1.jpg". Files are only ever reached through short-lived signed
  * links, so student copies are never public. Phones upload straight to storage with presigned PUT links,
@@ -18,6 +20,12 @@ export class StorageService {
   private readonly log = new Logger('Storage');
   private readonly root = resolve(env.uploadDir);
   private s3?: { client: any; presign: any; cmds: any };
+
+  constructor(private readonly prisma: PrismaService) {}
+
+  private get isDb() {
+    return env.storageDriver === 'db';
+  }
 
   private get isS3() {
     return env.storageDriver === 's3';
@@ -50,6 +58,12 @@ export class StorageService {
       await client.send(new cmds.PutObjectCommand({ Bucket: env.s3Bucket, Key: key, Body: data, ContentType: contentType }));
       return key;
     }
+    if (this.isDb) {
+      this.abs(key); // same key rules as the disk driver
+      const bytes = new Uint8Array(data);
+      await this.prisma.storedFile.upsert({ where: { key }, update: { data: bytes, contentType, size: bytes.length }, create: { key, data: bytes, contentType, size: bytes.length } });
+      return key;
+    }
     const p = this.abs(key);
     await mkdir(dirname(p), { recursive: true });
     await writeFile(p, data);
@@ -62,7 +76,25 @@ export class StorageService {
       const res = await client.send(new cmds.GetObjectCommand({ Bucket: env.s3Bucket, Key: key }));
       return Buffer.from(await res.Body.transformToByteArray());
     }
+    if (this.isDb) {
+      const f = await this.prisma.storedFile.findUnique({ where: { key }, select: { data: true } });
+      if (f) return Buffer.from(f.data);
+      // files written to disk before the switch to the db driver
+    }
     return readFile(this.abs(key));
+  }
+
+  /** The file and its type, or null when it does not exist (used by the /files route). */
+  async fetch(key: string): Promise<{ data: Buffer; contentType: string } | null> {
+    if (this.isDb) {
+      const f = await this.prisma.storedFile.findUnique({ where: { key }, select: { data: true, contentType: true } });
+      if (f) return { data: Buffer.from(f.data), contentType: f.contentType };
+    }
+    const p = this.absolutePath(key);
+    if (!p) return null;
+    const data = await readFile(p);
+    const ext = key.split('.').pop()?.toLowerCase();
+    return { data, contentType: ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg' };
   }
 
   async exists(key: string): Promise<boolean> {
@@ -75,6 +107,7 @@ export class StorageService {
         return false;
       }
     }
+    if (this.isDb && (await this.prisma.storedFile.count({ where: { key } }))) return true;
     try {
       return (await stat(this.abs(key))).isFile();
     } catch {
@@ -88,6 +121,7 @@ export class StorageService {
       await client.send(new cmds.DeleteObjectCommand({ Bucket: env.s3Bucket, Key: key })).catch(() => undefined);
       return;
     }
+    if (this.isDb) await this.prisma.storedFile.deleteMany({ where: { key } });
     await rm(this.abs(key), { force: true });
   }
 
@@ -104,6 +138,7 @@ export class StorageService {
       } while (token);
       return;
     }
+    if (this.isDb) await this.prisma.storedFile.deleteMany({ where: { key: { startsWith: `${prefix.replace(/\/$/, '')}/` } } });
     await rm(this.abs(prefix), { recursive: true, force: true });
   }
 

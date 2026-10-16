@@ -21,6 +21,15 @@ export class StorageController {
       res.redirect(302, await this.storage.bucketUrl(key));
       return;
     }
+    if (env.storageDriver === 'db') {
+      const f = await this.storage.fetch(key);
+      if (!f) throw new NotFoundException();
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+      res.setHeader('Content-Type', f.contentType);
+      res.setHeader('Content-Length', String(f.data.length));
+      res.end(f.data);
+      return;
+    }
     const path = this.storage.absolutePath(key);
     if (!path) throw new NotFoundException();
     res.setHeader('Cache-Control', 'private, max-age=3600');

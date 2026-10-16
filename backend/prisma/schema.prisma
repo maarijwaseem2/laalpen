@@ -890,3 +890,14 @@ model WebauthnChallenge {
   @@index([expiresAt])
   @@map("webauthn_challenges")
 }
+
+/// File bytes for STORAGE_DRIVER=db (answer-copy photos and red-pen pages), so they survive restarts on hosts without a disk.
+model StoredFile {
+  key         String   @id
+  data        Bytes
+  contentType String   @default("image/jpeg")
+  size        Int
+  createdAt   DateTime @default(now())
+
+  @@map("stored_files")
+}

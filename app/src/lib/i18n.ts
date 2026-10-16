@@ -28,6 +28,7 @@ const UR: Record<string, string> = {
   Profile: 'پروفائل',
   More: 'مزید',
   // sign in
+  'Starting the LaalPen server… the first visit can take up to a minute.': 'لال پین سرور شروع ہو رہا ہے… پہلی بار ایک منٹ تک لگ سکتا ہے۔',
   'Log in': 'لاگ اِن',
   Email: 'ای میل',
   Password: 'پاس ورڈ',

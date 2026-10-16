@@ -18,6 +18,7 @@
  */
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
+import { existsSync } from 'node:fs';
 import { copyFile, mkdir, readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -68,7 +69,19 @@ async function user(schoolId: string, email: string, name: string, role: 'ADMIN'
   });
 }
 
+/** STORAGE_DRIVER=db keeps file bytes in PostgreSQL (hosts whose disk is wiped on restart, e.g. Render free). */
+const dbStorage = process.env.STORAGE_DRIVER === 'db';
+
+async function assetExists(key: string) {
+  return dbStorage ? (await prisma.storedFile.count({ where: { key } })) > 0 : existsSync(join(uploadDir, key));
+}
+
 async function copyAsset(file: string, key: string) {
+  if (dbStorage) {
+    const data = new Uint8Array(await readFile(join(assets, file)));
+    await prisma.storedFile.upsert({ where: { key }, update: { data, contentType: 'image/jpeg', size: data.length }, create: { key, data, contentType: 'image/jpeg', size: data.length } });
+    return key;
+  }
   const dest = join(uploadDir, key);
   await mkdir(dirname(dest), { recursive: true });
   await copyFile(join(assets, file), dest);
@@ -278,6 +291,24 @@ async function demo() {
     const key = await copyAsset(`${weak.variant}-page-1.jpg`, `submissions/${blurry.id}/page-1.jpg`);
     await prisma.page.create({ data: { submissionId: blurry.id, pageNo: 1, originalPath: key, testId: t2.test.id, blurScore: 21, brightness: 180, qualityFlags: ['blurry'] } });
     await prisma.problemCopy.create({ data: { schoolId: school.id, testId: t2.test.id, submissionId: blurry.id, type: 'BLURRY', pageNo: 1, details: 'Photo is blurry (page 1)' } });
+  }
+
+  // the demo already existed: put back any demo copy photo that is missing (a wiped disk, or a new storage driver)
+  {
+    const variantOf = new Map<string, string>(demoResults.copies.map((c) => [profiles[`9-A-${c.roll}`], c.variant] as [string, string]));
+    variantOf.set(profiles['9-A-04'], demoResults.copies[2].variant); // the blurry retake
+    const pages = await prisma.page.findMany({ where: { testId: { in: [t1.test.id, t2.test.id] } }, include: { submission: { select: { studentId: true } } } });
+    let restored = 0;
+    for (const pg of pages) {
+      const variant = variantOf.get(pg.submission.studentId);
+      if (!variant) continue;
+      for (const [key, kind] of [[pg.originalPath, 'page'], [pg.annotatedPath, 'checked']] as const) {
+        if (!key || !/^submissions\/[^/]+\/(page|checked)-1\.jpg$/.test(key) || (await assetExists(key))) continue;
+        await copyAsset(`${variant}-${kind}-1.jpg`, key);
+        restored++;
+      }
+    }
+    if (restored) console.log(`Restored ${restored} demo copy photo(s).`);
   }
 
   // a roster student without an account yet, and a sign-up whose details did not match exactly:

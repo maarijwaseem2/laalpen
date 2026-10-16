@@ -30,10 +30,25 @@ export async function googleIdToken(): Promise<string> {
   }
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { GoogleSignin, isSuccessResponse } = require('@react-native-google-signin/google-signin');
+  const { statusCodes } = require('@react-native-google-signin/google-signin');
   GoogleSignin.configure({ webClientId: googleWebClientId });
-  await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
-  const res = await GoogleSignin.signIn();
-  if (!isSuccessResponse(res) || !res.data?.idToken) throw new GoogleCancelled();
-  const cred = await signInWithCredential(auth, GoogleAuthProvider.credential(res.data.idToken));
-  return cred.user.getIdToken();
+  let idToken: string | undefined;
+  try {
+    await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+    const res = await GoogleSignin.signIn();
+    if (!isSuccessResponse(res) || !res.data?.idToken) throw new GoogleCancelled();
+    idToken = res.data.idToken;
+  } catch (e: any) {
+    if (e instanceof GoogleCancelled || e?.code === statusCodes?.SIGN_IN_CANCELLED || e?.code === statusCodes?.IN_PROGRESS) throw new GoogleCancelled();
+    if (e?.code === statusCodes?.PLAY_SERVICES_NOT_AVAILABLE) throw new Error('Google login needs Google Play services on this phone. Please log in with your email and password.');
+    // DEVELOPER_ERROR (10): this app's signing certificate (SHA-1) is not registered in Firebase yet
+    if (String(e?.code) === '10' || /DEVELOPER_ERROR/i.test(String(e?.message))) throw new Error('Google login is not switched on for this app yet. Please log in with your email and password.');
+    throw new Error('Google sign-in failed. Please try again or use your email and password.');
+  }
+  try {
+    const cred = await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
+    return cred.user.getIdToken();
+  } catch {
+    throw new Error('Google sign-in failed. Please try again or use your email and password.');
+  }
 }

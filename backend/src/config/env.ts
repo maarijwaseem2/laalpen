@@ -71,8 +71,9 @@ export const env = {
   /** secret used to encrypt sensitive fields such as B-Form numbers */
   dataEncryptionKey: str('DATA_ENCRYPTION_KEY', 'dev-data-key-change-me-32-characters!!'),
 
-  // ----- file storage: "local" (free, on this computer) or "s3" (Cloudflare R2 / AWS S3 / any S3-compatible) -----
-  storageDriver: str('STORAGE_DRIVER', 'local') as 'local' | 's3',
+  // ----- file storage: "local" (free, on this computer), "db" (inside PostgreSQL: survives restarts on hosts
+  //       without a disk, e.g. Render free) or "s3" (Cloudflare R2 / AWS S3 / any S3-compatible) -----
+  storageDriver: str('STORAGE_DRIVER', 'local') as 'local' | 'db' | 's3',
   s3Endpoint: process.env.S3_ENDPOINT || '',
   s3Region: str('S3_REGION', 'auto'),
   s3Bucket: process.env.S3_BUCKET || '',
@@ -110,6 +111,10 @@ export const env = {
   /** roles that must confirm a new device with an emailed code when they have no authenticator app */
   get deviceConfirmRoles(): string[] {
     return (process.env.DEVICE_CONFIRM_ROLES ?? 'TEACHER').split(',').map((r) => r.trim().toUpperCase()).filter(Boolean);
+  },
+  /** email domains that skip the new-device email code because nobody can receive mail there (e.g. the shared demo school "laalpen.demo") */
+  get deviceConfirmSkipDomains(): string[] {
+    return (process.env.DEVICE_CONFIRM_SKIP_DOMAINS ?? '').split(',').map((d) => d.trim().toLowerCase().replace(/^@/, '')).filter(Boolean);
   },
   /** check new passwords against the Have I Been Pwned breach list (k-anonymity, only 5 hash chars leave the server) */
   get breachedPasswordCheck() {

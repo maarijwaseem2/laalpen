@@ -15,8 +15,13 @@ import { setMfaSetupHandler, setStepUpHandler } from '@/lib/api';
 import { queryClient } from '@/lib/query';
 import { darkTheme, lightTheme, useThemeMode, withUrdu } from '@/lib/theme';
 import { useLang } from '@/lib/i18n';
+import { wakeServer } from '@/lib/wake';
+import { ServerWaking } from '@/components/ServerWaking';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
+
+// start waking the (free, sleeping) API right away, while the app loads and the user types
+void wakeServer();
 
 // sensitive actions: ask for the password / authenticator code, then the request is retried
 setStepUpHandler(askStepUp);
@@ -54,6 +59,7 @@ export default function RootLayout() {
         <PaperProvider theme={theme} settings={{ icon: (p) => <MaterialCommunityIcons {...(p as any)} /> }}>
           <StatusBar style={dark ? 'light' : 'dark'} />
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.colors.background } }} />
+          <ServerWaking />
           <Toaster />
           <StepUpDialog />
         </PaperProvider>

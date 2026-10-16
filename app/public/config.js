@@ -16,6 +16,9 @@ window.LAALPEN = {
   // the web version of the app, served by this same site (laalpen.vercel.app/login); also used when the phone app is not installed
   webAppUrl: '/login',
 
+  // the LaalPen API; the home page pings it so the free server is awake by the time the visitor logs in
+  apiUrl: 'https://laalpen-backend.onrender.com',
+
   contactEmail: 'hello@laalpen.pk',
   contactWhatsApp: '', // e.g. '923001234567'
 };

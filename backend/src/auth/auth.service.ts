@@ -191,7 +191,7 @@ export class AuthService {
       const challengeId = await this.security.createChallenge(user.id, 'TOTP', device, method);
       return { mfaRequired: true, kind: 'TOTP' as const, challengeId };
     }
-    if (method === 'password' && env.deviceConfirmRoles.includes(user.role) && device.deviceId && user.email) {
+    if (method === 'password' && env.deviceConfirmRoles.includes(user.role) && device.deviceId && user.email && !env.deviceConfirmSkipDomains.includes(user.email.split('@')[1]?.toLowerCase() ?? '')) {
       const known = await this.security.isKnownDevice(user.id, device.deviceId);
       if (!known && (await this.security.hasAnyDevice(user.id))) {
         const challengeId = await this.security.createChallenge(user.id, 'EMAIL_DEVICE', device, method);

@@ -1,6 +1,7 @@
 import { API_URL } from './config';
 import { useAuth } from './auth';
 import type { Session } from './types';
+import { fetchWithTimeout, markServerOk, wakeServer } from './wake';
 
 export class ApiError extends Error {
   constructor(public status: number, message: string, public code?: string) {
@@ -81,8 +82,14 @@ export function request<T = any>(path: string, init: { method?: string; body?: u
   return p;
 }
 
+/** generous: some calls wait for the AI (answer key check, scans); uploads on slow mobile data take longer */
+const TIMEOUT_MS = 150_000;
+const UPLOAD_TIMEOUT_MS = 300_000;
+const unreachable = () =>
+  new ApiError(0, 'Cannot reach the LaalPen server. The free server may still be starting (up to 2 minutes) or your internet is off. Please try again in a minute.');
+
 async function send<T>(path: string, init: { method?: string; body?: unknown; form?: FormData; auth?: boolean }, method: string): Promise<T> {
-  // one key per user action, re-sent on automatic retries (token refresh, step-up) so the server runs it only once
+  // one key per user action, re-sent on automatic retries (token refresh, step-up, server wake-up) so the server runs it only once
   const idempotencyKey = MUTATING.has(method) ? newKey() : null;
   const doFetch = () => {
     const token = useAuth.getState().accessToken;
@@ -90,18 +97,27 @@ async function send<T>(path: string, init: { method?: string; body?: unknown; fo
     if (init.auth !== false && token) headers.authorization = `Bearer ${token}`;
     if (init.body !== undefined) headers['content-type'] = 'application/json';
     if (idempotencyKey) headers['idempotency-key'] = idempotencyKey;
-    return fetch(`${API_URL}/api${path}`, {
+    return fetchWithTimeout(`${API_URL}/api${path}`, {
       method,
       headers,
       body: init.form ?? (init.body !== undefined ? JSON.stringify(init.body) : undefined),
-    });
+    }, init.form ? UPLOAD_TIMEOUT_MS : TIMEOUT_MS);
   };
+  // the API sleeps when idle: wake it first (a quick check when it answered in the last few minutes)
+  await wakeServer();
   let res: Response;
   try {
     res = await doFetch();
   } catch {
-    throw new ApiError(0, `Cannot reach the LaalPen server at ${API_URL}. Is the backend running and on the same Wi-Fi?`);
+    // no answer: wait until the server is up, then try once more with the same Idempotency-Key
+    if (!(await wakeServer(true))) throw unreachable();
+    try {
+      res = await doFetch();
+    } catch {
+      throw unreachable();
+    }
   }
+  markServerOk();
   if (res.status === 401 && init.auth !== false && (await refreshSession())) res = await doFetch();
   // sensitive action: confirm it is you, then try once more
   if (res.status === 403 && onStepUp && (await peekCode(res)) === 'STEP_UP_REQUIRED' && (await onStepUp())) res = await doFetch();
