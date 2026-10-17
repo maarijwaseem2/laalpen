@@ -1,4 +1,17 @@
 {
+  "redirects": [
+    {
+      "source": "/((?!_expo/|assets/|fonts/|vendor/|favicon\\.ico|metadata\\.json|LaalPen\\.apk).*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "laalpen-app.vercel.app"
+        }
+      ],
+      "destination": "https://laalpen.vercel.app/$1",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     {
       "source": "/((?!_expo/|assets/|fonts/|vendor/|favicon\\.ico|metadata\\.json|LaalPen\\.apk).*)",
