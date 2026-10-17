@@ -33,8 +33,9 @@ export default function Profile() {
   const devices = useQuery({ queryKey: ['devices'], queryFn: () => api.get<{ id: string; label: string | null; lastIp: string | null; lastSeenAt: string }[]>('/auth/devices') });
   const sessions = useQuery({ queryKey: ['sessions'], queryFn: () => api.get<{ id: string; deviceLabel: string | null; ip: string | null; method: string; lastSeenAt: string; current: boolean }[]>('/auth/sessions') });
   if (!user) return null;
-  const role = user.role === 'ADMIN' ? 'School admin' : user.role === 'TEACHER' ? 'Teacher' : user.role === 'PARENT' ? 'Parent' : `Student — ${user.student?.className} ${user.student?.sectionName}, roll ${user.student?.rollNo}`;
-  const isParent = user.role === 'PARENT';
+  const role = user.role === 'SUPER_ADMIN' ? 'LaalPen admin (all schools)' : user.role === 'PRINCIPAL' ? 'Principal' : user.role === 'TEACHER' ? 'Teacher' : user.role === 'PARENT' ? 'Parent' : `Student — ${user.student?.className} ${user.student?.sectionName}, roll ${user.student?.rollNo}`;
+  const staff = !!user.staff;
+  const canChangePassword = !staff && user.hasPassword !== false;
 
   const logout = async () => {
     await unregisterPush();
@@ -65,30 +66,39 @@ export default function Profile() {
         <Divider />
         <List.Item title="Edit name and phone" left={(p) => <List.Icon {...p} icon="account-edit-outline" />} onPress={() => edit.open()} />
         <Divider />
-        {!isParent ? <List.Item title="Change password" left={(p) => <List.Icon {...p} icon="lock-reset" />} onPress={() => pass.open()} /> : null}
-        {!isParent ? <Divider /> : null}
+        {canChangePassword ? <List.Item title="Change password" left={(p) => <List.Icon {...p} icon="lock-reset" />} onPress={() => pass.open()} /> : null}
+        {canChangePassword ? <Divider /> : null}
         <List.Item title="Log out" titleStyle={{ color: t.colors.primary }} left={(p) => <List.Icon {...p} color={t.colors.primary} icon="logout" />} onPress={logout} />
       </Card>
-      {!isParent ? <Card style={{ gap: 10 }}>
+      {staff ? (
+        <Card style={{ gap: 6 }}>
+          <Text variant="titleMedium">How you sign in</Text>
+          <Text variant="bodyMedium" style={{ color: t.app.muted }}>
+            Staff accounts have no password. Each time, we email a 6-digit code to {user.email}. You can also add a passkey below, or use Google with this same email.
+            {user.passkeyBlocked ? ' Passkey sign-in is paused after 3 failed tries: it turns back on the next time you sign in with the emailed code.' : ''}
+          </Text>
+        </Card>
+      ) : null}
+      {<Card style={{ gap: 10 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <Text variant="titleMedium" style={{ flex: 1 }}>Two-step sign-in</Text>
           <Tag label={user.twoFactor ? 'On' : 'Off'} tone={user.twoFactor ? 'pass' : 'muted'} icon={user.twoFactor ? 'shield-check-outline' : 'shield-outline'} />
         </View>
         <Text variant="bodyMedium" style={{ color: t.app.muted }}>
           {user.twoFactor
-            ? 'Signing in needs your password and the code from your authenticator app.'
+            ? staff ? 'Signing in needs the emailed code and the code from your authenticator app.' : 'Signing in needs your password and the code from your authenticator app.'
             : 'Add an authenticator app so a stolen password alone cannot open your account.'}
         </Text>
         <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
           {!user.twoFactor ? <Button mode="contained-tonal" icon="shield-key-outline" onPress={() => router.push('/security/two-factor')}>Turn on</Button> : null}
           {user.twoFactor ? <Button mode="outlined" icon="key-chain-variant" onPress={() => newCodes.open()}>New backup codes</Button> : null}
-          {user.twoFactor && user.role !== 'ADMIN' ? <Button onPress={() => off2fa.open()}>Turn off</Button> : null}
+          {user.twoFactor && user.role !== 'PRINCIPAL' ? <Button onPress={() => off2fa.open()}>Turn off</Button> : null}
         </View>
-      </Card> : null}
-      {!isParent ? <PasskeysCard /> : null}
+      </Card>}
+      <PasskeysCard />
       <Card style={{ gap: 6 }}>
         <Text variant="titleMedium">Signed in now</Text>
-        <Text variant="bodySmall" style={{ color: t.app.muted }}>Don’t recognise one? Sign it out — and change your password.</Text>
+        <Text variant="bodySmall" style={{ color: t.app.muted }}>{staff ? 'Don’t recognise one? Sign it out.' : 'Don’t recognise one? Sign it out — and change your password.'}</Text>
         {(sessions.data ?? []).map((x) => (
           <List.Item key={x.id} title={`${x.deviceLabel ?? 'Unknown device'}${x.current ? ' (this device)' : ''}`} description={`Active ${fmtDate(x.lastSeenAt)}${x.ip ? ` · ${x.ip}` : ''} · ${x.method}`} left={(p) => <List.Icon {...p} icon={x.current ? 'cellphone-check' : 'devices'} />}
             right={() => (x.current ? null : <Button compact onPress={async () => { await api.del(`/auth/sessions/${x.id}`).catch(toastError); await sessions.refetch(); }}>Sign out</Button>)} />

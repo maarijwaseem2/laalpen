@@ -19,6 +19,13 @@ export const Public = () => SetMetadata(IS_PUBLIC, true);
 export const ALLOW_WITHOUT_MFA = 'allowWithoutMfa';
 export const AllowWithoutMfa = () => SetMetadata(ALLOW_WITHOUT_MFA, true);
 
+/**
+ * Route works while a principal has not finished the school profile, or a teacher is still waiting for the
+ * principal's approval (setup screens, notifications, profile). Everything else is blocked until then.
+ */
+export const ALLOW_SETUP = 'allowSetup';
+export const AllowSetup = () => SetMetadata(ALLOW_SETUP, true);
+
 /** Sensitive action: the user must have re-entered a password / authenticator code in the last few minutes. */
 export const STEP_UP = 'stepUp';
 export const StepUp = () => SetMetadata(STEP_UP, true);

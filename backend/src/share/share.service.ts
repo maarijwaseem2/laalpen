@@ -46,7 +46,7 @@ export class ShareService {
     if (!s || s.status !== 'APPROVED' || s.test.status !== 'PUBLISHED') throw new NotFoundException('Only published results can be shared');
     const allowed =
       (user.role === 'TEACHER' && s.test.assignment.teacherId === user.id) ||
-      (user.role === 'ADMIN' && s.student.schoolId === user.schoolId) ||
+      (user.role === 'PRINCIPAL' && s.student.schoolId === user.schoolId) ||
       (user.role === 'STUDENT' && s.student.userId === user.id) ||
       (user.role === 'PARENT' && s.student.guardians.some((g) => g.guardian.userId === user.id));
     if (!allowed) throw new ForbiddenException('You cannot share this result');

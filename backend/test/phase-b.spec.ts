@@ -1,6 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { api, bootApp, photo, startFakeAi, waitFor, type FakeAi } from './helpers.js';
+import { addTeacher, api, bootApp, lastCodeFor, newSchool, staffCodeLogin, stepUpStaff, photo, startFakeAi, waitFor, type FakeAi } from './helpers.js';
 import { CheckingService } from '../src/checking/checking.service.js';
 import { MessagingService } from '../src/messaging/messaging.service.js';
 import { RosterService } from '../src/roster/roster.service.js';
@@ -31,17 +31,29 @@ describe('Phase B — roster, claims, parents, capture, security', () => {
     return { authorization: `Bearer ${r.body.accessToken}`, refresh: r.body.refreshToken as string };
   };
   const auth = (h: Record<string, string>) => ({ authorization: h.authorization });
+  /** staff sign in with an emailed code (no passwords) */
+  const staff = async (email: string) => {
+    const b = await staffCodeLogin(app, prisma, mail, email);
+    return { authorization: `Bearer ${b.accessToken}`, refresh: b.refreshToken as string };
+  };
+  /** the child is on this family account (guardian row owned by the account) */
+  const linkedTo = (studentId: string, email: string) => prisma.studentGuardian.count({ where: { studentId, guardian: { user: { email } } } });
+  const family = async (name: string, email: string, phone?: string) => {
+    await api(app).post('/api/auth/signup').send({ name, email, phone, password: 'Student-Mango-42' }).expect(201);
+    await api(app).post('/api/auth/verify-email').send({ email, code: lastCode(email) }).expect(200);
+    return login(email, 'Student-Mango-42');
+  };
   const lastCode = (to: string) => [...mail.outbox].reverse().find((m) => m.to === to)?.code;
-  const student = (admissionNo: string) => prisma.studentProfile.findFirstOrThrow({ where: { admissionNo } });
+  const student = (admissionNo: string) => prisma.studentProfile.findFirstOrThrow({ where: { admissionNo, schoolId: ids.school } });
   const csv = (rows: string[]) => Buffer.from(['GR No,Student Name,Father Name,Class,Section,Roll No,DOB,Father Mobile', ...rows].join('\n'));
 
   beforeAll(async () => {
     ai = await startFakeAi(18765);
     ai.lastState = 'sure';
     ({ app, prisma, mail } = await bootApp());
-    await api(app).post('/api/auth/register').send({ schoolName: 'Roster School', name: 'Principal', email: 'admin@roster.test', password: 'Secret-Mango-42' });
-    await prisma.user.update({ where: { email: 'admin@roster.test' }, data: { emailVerified: true } });
-    admin = await login('admin@roster.test', 'Secret-Mango-42');
+    let schoolId: string;
+    ({ auth: admin, schoolId } = await newSchool(app, prisma, mail, { schoolName: 'Roster School', email: 'admin@roster.test' }));
+    ids.school = schoolId;
     const c6 = await api(app).post('/api/admin/classes').set(auth(admin)).send({ name: 'Class 6', grade: 6, sections: ['A'] });
     const c7 = await api(app).post('/api/admin/classes').set(auth(admin)).send({ name: 'Class 7', grade: 7, sections: ['A'] });
     ids.class6 = c6.body.id;
@@ -49,14 +61,14 @@ describe('Phase B — roster, claims, parents, capture, security', () => {
     ids.sec6 = c6.body.sections[0].id;
     ids.sec7 = c7.body.sections[0].id;
     const sub = await api(app).post('/api/admin/subjects').set(auth(admin)).send({ name: 'Maths' });
-    const t1 = await api(app).post('/api/admin/teachers').set(auth(admin)).send({ name: 'Amna Teacher', email: 'amna@roster.test', password: 'Teacher-Mango-42' });
-    const t2 = await api(app).post('/api/admin/teachers').set(auth(admin)).send({ name: 'Babar Teacher', email: 'babar@roster.test', password: 'Teacher-Mango-42' });
-    const a1 = await api(app).post('/api/admin/assignments').set(auth(admin)).send({ teacherId: t1.body.id, sectionId: ids.sec6, subjectId: sub.body.id });
-    await api(app).post('/api/admin/assignments').set(auth(admin)).send({ teacherId: t2.body.id, sectionId: ids.sec7, subjectId: sub.body.id });
+    const t1 = await addTeacher(app, prisma, mail, auth(admin), { name: 'Amna Teacher', email: 'amna@roster.test' });
+    const t2 = await addTeacher(app, prisma, mail, auth(admin), { name: 'Babar Teacher', email: 'babar@roster.test' });
+    const a1 = await api(app).post('/api/admin/assignments').set(auth(admin)).send({ teacherId: t1.id, sectionId: ids.sec6, subjectId: sub.body.id });
+    await api(app).post('/api/admin/assignments').set(auth(admin)).send({ teacherId: t2.id, sectionId: ids.sec7, subjectId: sub.body.id });
     ids.assignment = a1.body.id;
-    ids.teacher = t1.body.id;
-    teacher = await login('amna@roster.test', 'Teacher-Mango-42');
-    teacher2 = await login('babar@roster.test', 'Teacher-Mango-42');
+    ids.teacher = t1.id;
+    teacher = await staff('amna@roster.test');
+    teacher2 = await staff('babar@roster.test');
   });
   afterAll(async () => {
     await app.get(CheckingService).queue?.deleteAllJobs();
@@ -77,7 +89,7 @@ describe('Phase B — roster, claims, parents, capture, security', () => {
     expect(dry.status, JSON.stringify(dry.body)).toBe(200);
     expect(dry.body.summary).toMatchObject({ total: 4, new: 2, errors: 2 });
     expect(dry.body.problems.map((p: any) => p.errors.join(' ')).join(' | ')).toMatch(/Date of birth.*\|.*Roll 02 is repeated/);
-    expect(await prisma.studentProfile.count()).toBe(0); // a dry run never writes students
+    expect(await prisma.studentProfile.count({ where: { schoolId: ids.school } })).toBe(0); // a dry run never writes students
 
     const errs = await api(app).get(`/api/admin/import/${dry.body.id}/errors`).set(auth(admin));
     expect(errs.status).toBe(200);
@@ -90,7 +102,7 @@ describe('Phase B — roster, claims, parents, capture, security', () => {
     await api(app).post(`/api/admin/import/${dry.body.id}/commit`).set(auth(admin)).expect(400); // not twice
 
     // brother and sister share one guardian (one phone number)
-    const g = await prisma.guardian.findMany({ include: { students: true } });
+    const g = await prisma.guardian.findMany({ where: { schoolId: ids.school }, include: { students: true } });
     expect(g).toHaveLength(1);
     expect(g[0]).toMatchObject({ phone: '+923001234567' });
     expect(g[0].students).toHaveLength(2);
@@ -103,9 +115,9 @@ describe('Phase B — roster, claims, parents, capture, security', () => {
     ]), { filename: 'register.csv', contentType: 'text/csv' });
     expect(again.body.summary).toMatchObject({ new: 1, updated: 1, unchanged: 1, errors: 0 });
     await api(app).post(`/api/admin/import/${again.body.id}/commit`).set(auth(admin)).expect(200);
-    expect(await prisma.studentProfile.count()).toBe(3);
+    expect(await prisma.studentProfile.count({ where: { schoolId: ids.school } })).toBe(3);
     expect((await student('G-101')).name).toBe('Ali Raza Khan');
-    expect(await prisma.enrollment.count()).toBe(3);
+    expect(await prisma.enrollment.count({ where: { student: { schoolId: ids.school } } })).toBe(3);
 
     const tpl = await api(app).get('/api/admin/import/template').set(auth(admin));
     expect(tpl.status).toBe(200);
@@ -125,36 +137,60 @@ describe('Phase B — roster, claims, parents, capture, security', () => {
 
   // ---------- claims ----------
 
-  it('student signs up with the class code + roll + date of birth and is linked automatically (no approval)', async () => {
+  it('old student self sign-up is closed: everyone uses the one Parent / Student account', async () => {
+    const r = await api(app).post('/api/auth/claim').send({ code: 'X', email: 'old@roster.test', password: 'Student-Mango-42' });
+    expect(r.status).toBe(403);
+    expect(r.body.code).toBe('SIGNUP_MOVED');
+  });
+
+  it('family account: sign up, verify email, sign in by phone, link the child with the class code + name + roll + DOB (automatic)', async () => {
     const code = await api(app).post(`/api/teacher/sections/${ids.sec6}/join-code`).set(auth(teacher));
     expect(code.status, JSON.stringify(code.body)).toBe(200);
     ids.joinCode = code.body.joinCode;
     const look = await api(app).get(`/api/auth/schools/${ids.joinCode}`);
     expect(look.body.section).toMatchObject({ id: ids.sec6, className: 'Class 6' });
 
-    const r = await api(app).post('/api/auth/claim').send({ code: ids.joinCode, name: 'Ali Raza', rollNo: '01', dob: '2014-03-05', email: 'ali@roster.test', password: 'Student-Mango-42' });
-    expect(r.status, JSON.stringify(r.body)).toBe(201);
+    await api(app).post('/api/auth/signup').send({ name: 'Raza Khan', email: 'ali@roster.test', phone: '0321 5550101', password: 'Student-Mango-42' }).expect(201);
+    const early = await api(app).post('/api/auth/login').send({ email: 'ali@roster.test', password: 'Student-Mango-42' });
+    expect(early.body.code).toBe('EMAIL_NOT_VERIFIED');
+    await prisma.emailOtp.updateMany({ where: { email: 'ali@roster.test' }, data: { createdAt: new Date(Date.now() - 60_000) } });
+    await api(app).post('/api/auth/resend-otp').send({ email: 'ali@roster.test', purpose: 'VERIFY_EMAIL' }).expect(200);
     await api(app).post('/api/auth/verify-email').send({ email: 'ali@roster.test', code: lastCode('ali@roster.test') }).expect(200);
+    const byPhone = await api(app).post('/api/auth/login').send({ phone: '03215550101', password: 'Student-Mango-42' });
+    expect(byPhone.status, JSON.stringify(byPhone.body)).toBe(200);
+    expect(byPhone.body.user.role).toBe('PARENT');
+    const fam = { authorization: `Bearer ${byPhone.body.accessToken}` };
+
+    const kind = await api(app).get(`/api/parent/code/${ids.joinCode}`).set(fam);
+    expect(kind.body).toMatchObject({ kind: 'class', school: { section: { id: ids.sec6 } } });
+    const needs = await api(app).post('/api/parent/link').set(fam).send({ code: ids.joinCode });
+    expect(needs.body.code).toBe('NEED_CHILD_DETAILS');
+    const r = await api(app).post('/api/parent/link').set(fam).send({ code: ids.joinCode, childName: 'Ali Raza', rollNo: '01', dob: '2014-03-05' });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body.status).toBe('LINKED');
 
     const ali = await student('G-101');
-    expect(ali.userId).toBeTruthy();
-    const s = await login('ali@roster.test', 'Student-Mango-42');
-    const st = await api(app).get('/api/student/enrollment').set(auth(s));
-    expect(st.body).toMatchObject({ status: 'APPROVED', rollNo: '01' });
-    await api(app).get('/api/student/dashboard').set(auth(s)).expect(200);
-    expect(await prisma.studentProfile.count()).toBe(5); // linked, not duplicated
+    expect(await linkedTo(ali.id, 'ali@roster.test')).toBe(1);
+    const kids = await api(app).get('/api/parent/children').set(fam);
+    expect(kids.body.map((k: any) => k.name)).toEqual(['Ali Raza Khan']);
+    await api(app).get(`/api/parent/children/${ali.id}/dashboard`).set(fam).expect(200);
+    await api(app).get('/api/student/dashboard').set(fam).expect(403); // read-only family routes only
+    expect(await prisma.studentProfile.count({ where: { schoolId: ids.school } })).toBe(5); // linked, not duplicated
     expect(await api(app).get('/api/requests/count').set(auth(teacher)).then((x) => x.body.count)).toBe(0);
   });
 
-  it('a mismatch goes to the section teacher with suggestions; the teacher links to the right roster student', async () => {
-    await api(app).post('/api/auth/claim').send({ code: ids.joinCode, name: 'Hamza Iqbal', rollNo: '03', dob: '2014-02-27', email: 'hamza@roster.test', password: 'Student-Mango-42' }).expect(201);
-    await api(app).post('/api/auth/verify-email').send({ email: 'hamza@roster.test', code: lastCode('hamza@roster.test') }).expect(200);
-    expect((await student('G-103')).userId).toBeNull(); // DOB did not match → not automatic
+  it('a mismatch goes to the section teacher with suggestions; the teacher links the family to the right roster student', async () => {
+    const fam = await family('Iqbal Sahab', 'hamza@roster.test');
+    const p = await api(app).post('/api/parent/link').set(auth(fam)).send({ code: ids.joinCode, childName: 'Hamza Iqbal', rollNo: '03', dob: '2014-02-27' });
+    expect(p.body.status).toBe('PENDING'); // DOB did not match → not automatic
+    const hamza = await student('G-103');
+    expect(await linkedTo(hamza.id, 'hamza@roster.test')).toBe(0);
+    const mine = await api(app).get('/api/parent/requests').set(auth(fam));
+    expect(mine.body[0]).toMatchObject({ name: 'Hamza Iqbal', status: 'PENDING' });
 
     const list = await api(app).get('/api/requests').set(auth(teacher));
     expect(list.body).toHaveLength(1);
     const req = list.body[0];
-    const hamza = await student('G-103');
     expect(req.suggestions[0]).toMatchObject({ id: hamza.id, rollNo: '03', taken: false });
     expect(req.rollTakenBy).toBe('Hamza Iqbal');
 
@@ -164,12 +200,12 @@ describe('Phase B — roster, claims, parents, capture, security', () => {
 
     const ok = await api(app).post(`/api/requests/${req.id}/approve`).set(auth(teacher)).send({ studentId: hamza.id });
     expect(ok.status, JSON.stringify(ok.body)).toBe(200);
-    expect((await student('G-103')).userId).toBeTruthy();
-    expect(await prisma.studentProfile.count()).toBe(5);
+    expect(await linkedTo(hamza.id, 'hamza@roster.test')).toBe(1);
+    expect(await prisma.studentProfile.count({ where: { schoolId: ids.school } })).toBe(5);
     await api(app).post(`/api/requests/${req.id}/approve`).set(auth(teacher)).send({}).expect(400); // handled already
   });
 
-  it('a printed claim card code links exactly one student, once', async () => {
+  it('a printed claim card code links exactly one child, once (detected from the same code box)', async () => {
     const sara = await student('G-102');
     const cards = await api(app).post('/api/admin/claim-cards').set(auth(admin)).send({ studentIds: [sara.id] });
     expect(cards.status, JSON.stringify(cards.body)).toBe(200);
@@ -179,11 +215,15 @@ describe('Phase B — roster, claims, parents, capture, security', () => {
     expect(pdf.status).toBe(200);
 
     const [card] = await app.get(RosterService).newClaimCodes(sara.schoolId, [sara.id], 'STUDENT'); // a fresh code (old one stops working)
-    const r = await api(app).post('/api/auth/claim').send({ claimCode: card.code, email: 'sara@roster.test', password: 'Student-Mango-42' });
-    expect(r.status, JSON.stringify(r.body)).toBe(201);
-    await api(app).post('/api/auth/verify-email').send({ email: 'sara@roster.test', code: lastCode('sara@roster.test') }).expect(200);
-    expect((await student('G-102')).userId).toBeTruthy();
-    await api(app).post('/api/auth/claim').send({ claimCode: card.code, email: 'sara2@roster.test', password: 'Student-Mango-42' }).expect(400);
+    const fam = await family('Sara Family', 'sara@roster.test');
+    const kind = await api(app).get(`/api/parent/code/${card.code}`).set(auth(fam));
+    expect(kind.body).toMatchObject({ kind: 'card', child: { name: 'Sara Raza' } });
+    const r = await api(app).post('/api/parent/link').set(auth(fam)).send({ code: card.code });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect(r.body.status).toBe('LINKED');
+    expect(await linkedTo(sara.id, 'sara@roster.test')).toBe(1);
+    const other = await family('Sara Other', 'sara2@roster.test');
+    expect((await api(app).post('/api/parent/link').set(auth(other)).send({ code: card.code })).body.code).toBe('NEED_CHILD_DETAILS'); // used card = not a card any more
   });
 
   // ---------- parents ----------
@@ -326,8 +366,9 @@ describe('Phase B — roster, claims, parents, capture, security', () => {
     const blocked = await api(app).post(`/api/teacher/submissions/${ids.aliSub}/reopen`).set(auth(teacher)).send({ reason: 'Parent asked about Q2' });
     expect(blocked.status).toBe(403);
     expect(blocked.body.code).toBe('STEP_UP_REQUIRED');
-    await api(app).post('/api/auth/step-up').set(auth(teacher)).send({ password: 'wrong-password' }).expect(400);
-    await api(app).post('/api/auth/step-up').set(auth(teacher)).send({ password: 'Teacher-Mango-42' }).expect(200);
+    await api(app).post('/api/auth/step-up').set(auth(teacher)).send({ password: 'wrong-password' }).expect(400); // staff have no password
+    await api(app).post('/api/auth/step-up').set(auth(teacher)).send({ emailCode: '000000' }).expect(400);
+    expect((await stepUpStaff(app, prisma, mail, auth(teacher), 'amna@roster.test')).status).toBe(200);
     expect((await prisma.session.findUniqueOrThrow({ where: { id: sid } })).stepUpAt).toBeTruthy();
     const ok = await api(app).post(`/api/teacher/submissions/${ids.aliSub}/reopen`).set(auth(teacher)).send({ reason: 'Parent asked about Q2' });
     expect(ok.status, JSON.stringify(ok.body)).toBe(200);
@@ -355,13 +396,13 @@ describe('Phase B — roster, claims, parents, capture, security', () => {
   // ---------- sessions ----------
 
   it('a refresh token used twice signs that device out (token theft)', async () => {
-    const s = await login('babar@roster.test', 'Teacher-Mango-42');
+    const s = await staff('babar@roster.test');
     const r1 = await api(app).post('/api/auth/refresh').send({ refreshToken: s.refresh });
     expect(r1.status).toBe(200);
     await api(app).post('/api/auth/refresh').send({ refreshToken: s.refresh }).expect(401); // stolen copy used
     await api(app).post('/api/auth/refresh').send({ refreshToken: r1.body.refreshToken }).expect(401); // whole session ended
     await api(app).get('/api/auth/me').set({ authorization: `Bearer ${r1.body.accessToken}` }).expect(401);
-    teacher2 = await login('babar@roster.test', 'Teacher-Mango-42');
+    teacher2 = await staff('babar@roster.test');
     const list = await api(app).get('/api/auth/sessions').set(auth(teacher2));
     expect(list.status).toBe(200);
     expect(list.body.length).toBeGreaterThanOrEqual(1);
@@ -370,9 +411,7 @@ describe('Phase B — roster, claims, parents, capture, security', () => {
   // ---------- tenant isolation ----------
 
   it('another school can never read this school’s students or copies (app checks + database row security)', async () => {
-    await api(app).post('/api/auth/register').send({ schoolName: 'Other School', name: 'Other Admin', email: 'admin@other.test', password: 'Secret-Mango-42' });
-    await prisma.user.update({ where: { email: 'admin@other.test' }, data: { emailVerified: true } });
-    const other = await login('admin@other.test', 'Secret-Mango-42');
+    const { auth: other } = await newSchool(app, prisma, mail, { schoolName: 'Roster Other School', email: 'admin@other.test' });
     const ali = await student('G-101');
     await api(app).patch(`/api/admin/students/${ali.id}`).set(auth(other)).send({ name: 'Hacked' }).expect(404);
     await api(app).get(`/api/admin/sections/${ids.sec6}`).set(auth(other)).expect(404);
@@ -380,7 +419,7 @@ describe('Phase B — roster, claims, parents, capture, security', () => {
     await api(app).post(`/api/teacher/submissions/${ids.aliSub}/approve`).set(auth(teacher2)).expect(404);
 
     const tenant = app.get(TenantService);
-    const otherSchool = (await prisma.school.findFirstOrThrow({ where: { name: 'Other School' } })).id;
+    const otherSchool = (await prisma.school.findFirstOrThrow({ where: { name: 'Roster Other School' } })).id;
     const seen = await tenant.read(otherSchool, (tx) => tx.submission.findMany());
     expect(await prisma.submission.count()).toBeGreaterThan(0);
     expect(seen).toHaveLength(0);
@@ -396,7 +435,7 @@ describe('Phase B — roster, claims, parents, capture, security', () => {
       title: 'Homework', gradingMode: 'OVERNIGHT', confirmKey: true, questions: [{ number: 1, text: '3 x 4', maxMarks: 2, answerKey: '12' }],
     });
     expect(t.status, JSON.stringify(t.body)).toBe(201);
-    const [usman, zara] = await Promise.all(['Usman Ali', 'Zara Khan'].map((n) => prisma.studentProfile.findFirstOrThrow({ where: { name: n } })));
+    const [usman, zara] = await Promise.all(['Usman Ali', 'Zara Khan'].map((n) => prisma.studentProfile.findFirstOrThrow({ where: { name: n, schoolId: ids.school } })));
     for (const s of [usman, zara]) {
       await api(app).post(`/api/teacher/tests/${t.body.id}/students/${s.id}/copy`).set(auth(teacher)).attach('pages', photo, { filename: 'p1.png', contentType: 'image/png' }).expect(201);
     }
@@ -424,7 +463,7 @@ describe('Phase B — roster, claims, parents, capture, security', () => {
   // ---------- leaving and year-end ----------
 
   it('mark as left keeps marks; year-end promotion moves the class and keeps the history', async () => {
-    const zara = await prisma.studentProfile.findFirstOrThrow({ where: { name: 'Zara Khan' } });
+    const zara = await prisma.studentProfile.findFirstOrThrow({ where: { name: 'Zara Khan', schoolId: ids.school } });
     await api(app).delete(`/api/admin/students/${zara.id}`).set(auth(admin)).expect(400); // has a checked copy → mark left instead
     await api(app).post(`/api/admin/students/${zara.id}/leave`).set(auth(admin)).send({ reason: 'Moved to Lahore' }).expect(200);
     const roster = await api(app).get(`/api/teacher/tests/${ids.test}`).set(auth(teacher));
@@ -438,7 +477,7 @@ describe('Phase B — roster, claims, parents, capture, security', () => {
 
     await prisma.session.updateMany({ where: { user: { email: 'admin@roster.test' } }, data: { stepUpAt: null } });
     expect((await api(app).post('/api/admin/promote').set(auth(admin)).send({ fromClassId: ids.class6, toClassId: ids.class7, sessionName: '2027-28', retainIds: [hamza.id] })).body.code).toBe('STEP_UP_REQUIRED');
-    await api(app).post('/api/auth/step-up').set(auth(admin)).send({ password: 'Secret-Mango-42' }).expect(200);
+    expect((await stepUpStaff(app, prisma, mail, auth(admin), 'admin@roster.test')).status).toBe(200);
     const done = await api(app).post('/api/admin/promote').set(auth(admin)).send({ fromClassId: ids.class6, toClassId: ids.class7, sessionName: '2027-28', retainIds: [hamza.id] });
     expect(done.status, JSON.stringify(done.body)).toBe(200);
 
@@ -451,7 +490,7 @@ describe('Phase B — roster, claims, parents, capture, security', () => {
     expect(sessions.body.find((s: any) => s.isCurrent).name).toBe('2027-28');
     // old marks stay with the student
     const s = await login('ali@roster.test', 'Student-Mango-42');
-    const res = await api(app).get('/api/student/results').set(auth(s));
+    const res = await api(app).get(`/api/parent/children/${ali.id}/dashboard`).set(auth(s));
     expect(res.status).toBe(200);
   });
 });

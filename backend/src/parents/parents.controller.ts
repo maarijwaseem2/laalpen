@@ -19,9 +19,6 @@ class PhoneVerifyDto {
   @IsOptional() @IsString() @MaxLength(100) deviceId?: string;
   @trim() @IsOptional() @IsString() @MaxLength(80) deviceName?: string;
 }
-class CodeDto {
-  @trim() @IsString() @MinLength(6) @MaxLength(20) code: string;
-}
 
 @ApiTags('parents')
 @Controller()
@@ -47,5 +44,4 @@ export class ParentsController {
   @ApiBearerAuth() @Roles('PARENT') @Get('parent/children/:id/dashboard') async dashboard(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.students.dashboard(await this.svc.child(u.id, id)); }
   @ApiBearerAuth() @Roles('PARENT') @Get('parent/children/:id/subjects/:assignmentId') async subject(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('assignmentId') a: string) { return this.students.subject(await this.svc.child(u.id, id), a); }
   @ApiBearerAuth() @Roles('PARENT') @Get('parent/results/:id') async result(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.students.result(await this.svc.childOfSubmission(u.id, id), id); }
-  @ApiBearerAuth() @Roles('PARENT') @HttpCode(200) @Throttle({ default: { limit: 10, ttl: 60_000 } }) @Post('parent/link') link(@CurrentUser() u: AuthUser, @Body() dto: CodeDto) { return this.svc.link(u.id, dto.code); }
 }

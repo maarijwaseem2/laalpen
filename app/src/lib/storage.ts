@@ -30,4 +30,5 @@ export const secure = {
 export const prefs = {
   get: (k: string) => AsyncStorage.getItem(k).catch(() => null),
   set: (k: string, v: string) => AsyncStorage.setItem(k, v).catch(() => undefined),
+  remove: (k: string) => AsyncStorage.removeItem(k).catch(() => undefined),
 };

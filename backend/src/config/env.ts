@@ -123,6 +123,15 @@ export const env = {
   get deviceConfirmSkipDomains(): string[] {
     return (process.env.DEVICE_CONFIRM_SKIP_DOMAINS ?? '').split(',').map((d) => d.trim().toLowerCase().replace(/^@/, '')).filter(Boolean);
   },
+  /** the LaalPen platform owner (SUPER_ADMIN); the seed creates this account if it is missing */
+  superAdminEmail: (process.env.SUPER_ADMIN_EMAIL || '').trim().toLowerCase(),
+  superAdminName: str('SUPER_ADMIN_NAME', 'LaalPen Admin'),
+  /** demo staff on these domains can never receive email: the sign-in code is shown on screen instead (shared demo school only) */
+  get demoLoginDomains(): string[] {
+    return (process.env.DEMO_LOGIN_DOMAINS ?? 'laalpen.demo').split(',').map((d) => d.trim().toLowerCase().replace(/^@/, '')).filter(Boolean);
+  },
+  /** failed passkey sign-ins in a row before the owner is emailed and must use an email code */
+  maxPasskeyFailures: num('MAX_PASSKEY_FAILURES', 3),
   /** check new passwords against the Have I Been Pwned breach list (k-anonymity, only 5 hash chars leave the server) */
   get breachedPasswordCheck() {
     return (process.env.BREACHED_PASSWORD_CHECK ?? 'true') !== 'false';

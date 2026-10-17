@@ -18,3 +18,15 @@ export const greeting = () => {
 };
 /** +923001234567 → 0300 1234567 (how people in Pakistan write it) */
 export const fmtPhone = (p?: string | null) => (p && /^\+92\d{10}$/.test(p) ? `0${p.slice(3, 6)} ${p.slice(6)}` : p ?? '');
+
+/** DD/MM/YYYY (how Pakistani schools write it) -> YYYY-MM-DD; null when empty, 'bad' when not a real date */
+export function parseDob(v: string): string | null | 'bad' {
+  const t = v.trim();
+  if (!t) return null;
+  const m = t.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/) ?? null;
+  if (m) {
+    const d = new Date(Date.UTC(+m[3]!, +m[2]! - 1, +m[1]!));
+    return d.getUTCMonth() === +m[2]! - 1 ? d.toISOString().slice(0, 10) : 'bad';
+  }
+  return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : 'bad';
+}

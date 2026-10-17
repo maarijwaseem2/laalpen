@@ -1,9 +1,9 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, ForbiddenException, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
+import { ApiBearerAuth, ApiExcludeEndpoint, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { CurrentUser, Public, Roles, type AuthUser } from '../common/decorators.js';
 import { ClaimsService } from './claims.service.js';
-import { ApproveClaimDto, ClaimDto, RejectDto, ResubmitDto, UseCodeDto } from './claims.dto.js';
+import { ApproveClaimDto, FamilyLinkDto, RejectDto, ResubmitDto, UseCodeDto } from './claims.dto.js';
 
 @ApiTags('claims')
 @Controller()
@@ -17,17 +17,31 @@ export class ClaimsController {
     return this.svc.lookup(code);
   }
 
-  @Public() @Throttle({ default: { limit: 10, ttl: 60_000 } })
-  @Post('auth/claim')
-  claim(@Body() dto: ClaimDto) {
-    return this.svc.claim({ ...dto, code: dto.code ?? dto.joinCode });
+  /** Student self sign-up moved: everyone creates one Parent / Student account (POST /auth/signup), then links the child. */
+  @Public() @HttpCode(403) @ApiExcludeEndpoint()
+  @Post(['auth/claim', 'auth/register-student'])
+  claimMoved() {
+    throw new ForbiddenException({ message: 'Create a Parent / Student account first, then add your child with the class or card code.', code: 'SIGNUP_MOVED' });
   }
 
-  /** Older apps call this name. */
-  @Public() @Throttle({ default: { limit: 10, ttl: 60_000 } })
-  @Post('auth/register-student')
-  register(@Body() dto: ClaimDto) {
-    return this.svc.claim({ ...dto, code: dto.code ?? dto.joinCode });
+  /** Family account: which kind of code is this (class / school / card)? */
+  @ApiBearerAuth() @Roles('PARENT') @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Get('parent/code/:code')
+  detect(@Param('code') code: string) {
+    return this.svc.detectCode(code);
+  }
+
+  /** Family account: link a child with one code (card = at once; class/school code + name + roll = checked, maybe teacher approval). */
+  @ApiBearerAuth() @Roles('PARENT') @HttpCode(200) @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('parent/link')
+  link(@CurrentUser() u: AuthUser, @Body() dto: FamilyLinkDto) {
+    return this.svc.familyLink(u.id, dto);
+  }
+
+  @ApiBearerAuth() @Roles('PARENT')
+  @Get('parent/requests')
+  requests(@CurrentUser() u: AuthUser) {
+    return this.svc.familyRequests(u.id);
   }
 
   @ApiBearerAuth() @Roles('STUDENT')
@@ -48,25 +62,25 @@ export class ClaimsController {
     return this.svc.useCode(u.id, dto.code);
   }
 
-  @ApiBearerAuth() @Roles('TEACHER', 'ADMIN')
+  @ApiBearerAuth() @Roles('TEACHER', 'PRINCIPAL')
   @Get('requests')
   list(@CurrentUser() u: AuthUser) {
     return this.svc.list(u);
   }
 
-  @ApiBearerAuth() @Roles('TEACHER', 'ADMIN')
+  @ApiBearerAuth() @Roles('TEACHER', 'PRINCIPAL')
   @Get('requests/count')
   async count(@CurrentUser() u: AuthUser) {
     return { count: await this.svc.count(u) };
   }
 
-  @ApiBearerAuth() @Roles('TEACHER', 'ADMIN') @HttpCode(200)
+  @ApiBearerAuth() @Roles('TEACHER', 'PRINCIPAL') @HttpCode(200)
   @Post('requests/:id/approve')
   approve(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ApproveClaimDto) {
     return this.svc.approve(u, id, dto.studentId);
   }
 
-  @ApiBearerAuth() @Roles('TEACHER', 'ADMIN') @HttpCode(200)
+  @ApiBearerAuth() @Roles('TEACHER', 'PRINCIPAL') @HttpCode(200)
   @Post('requests/:id/reject')
   reject(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: RejectDto) {
     return this.svc.reject(u, id, dto.reason);

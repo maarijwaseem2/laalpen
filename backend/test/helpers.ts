@@ -168,3 +168,72 @@ export async function waitFor<T>(fn: () => Promise<T>, ok: (v: T) => boolean, ms
 
 /** Smallest valid JPEG-ish payload; the fake AI never decodes it. */
 export const photo = Buffer.from(PNG, 'base64');
+
+// ---------- roles & sign-in helpers (staff never use passwords) ----------
+
+type Mailbox = { outbox: { to: string; subject: string; code?: string }[] };
+type Db = PrismaService;
+
+/** Last emailed code for this address. */
+export const lastCodeFor = (mail: Mailbox, to: string) => [...mail.outbox].reverse().find((m) => m.to === to && m.code)?.code;
+
+/** Staff sign-in with an emailed one-time code. Returns the raw verify body (a session or a TOTP challenge). */
+export async function staffCodeLogin(app: INestApplication, prisma: Db, mail: Mailbox, email: string, device: { deviceId?: string; deviceName?: string } = {}) {
+  // a new code may be asked for only every 45 s: tests sign in many times, so age the last one
+  await prisma.emailOtp.updateMany({ where: { email }, data: { createdAt: new Date(Date.now() - 60_000) } });
+  const start = await api(app).post('/api/auth/email-code/start').send({ email });
+  if (start.status !== 200) throw new Error(`email-code/start ${start.status} ${JSON.stringify(start.body)}`);
+  const code = lastCodeFor(mail, email);
+  const r = await api(app).post('/api/auth/email-code/verify').send({ email, code, ...device });
+  if (r.status !== 200) throw new Error(`email-code/verify ${r.status} ${JSON.stringify(r.body)}`);
+  return r.body;
+}
+
+export const bearer = (body: { accessToken: string }) => ({ authorization: `Bearer ${body.accessToken}` });
+
+export async function loginStaff(app: INestApplication, prisma: Db, mail: Mailbox, email: string, device: { deviceId?: string; deviceName?: string } = {}) {
+  const body = await staffCodeLogin(app, prisma, mail, email, device);
+  if (!body.accessToken) throw new Error(`expected a session for ${email}, got ${JSON.stringify(body)}`);
+  return bearer(body);
+}
+
+const superAdmins = new WeakMap<INestApplication, Record<string, string>>();
+
+/** The platform super admin (created straight in the database, like the seed does from SUPER_ADMIN_EMAIL). */
+export async function superAdmin(app: INestApplication, prisma: Db, mail: Mailbox, email = 'root@platform.test') {
+  const cached = superAdmins.get(app);
+  if (cached) return cached;
+  if (!(await prisma.user.findUnique({ where: { email } }))) await prisma.user.create({ data: { email, name: 'Platform Owner', role: 'SUPER_ADMIN', emailVerified: true } });
+  const auth = await loginStaff(app, prisma, mail, email);
+  superAdmins.set(app, auth);
+  return auth;
+}
+
+/**
+ * A school created the new way: the super admin adds the school + principal, the principal signs in with an email
+ * code. With `completeProfile` (default) the profile step is skipped so older specs can go straight to work.
+ */
+export async function newSchool(app: INestApplication, prisma: Db, mail: Mailbox, o: { schoolName: string; email: string; name?: string; completeProfile?: boolean }) {
+  const root = await superAdmin(app, prisma, mail);
+  const r = await api(app).post('/api/platform/schools').set(root).send({ name: o.schoolName, principalName: o.name ?? 'Principal', principalEmail: o.email });
+  if (r.status !== 201) throw new Error(`create school ${r.status} ${JSON.stringify(r.body)}`);
+  if (o.completeProfile !== false) await prisma.school.update({ where: { id: r.body.id }, data: { profileCompletedAt: new Date(), address: 'Test Road', phone: '021 1234567' } });
+  const auth = await loginStaff(app, prisma, mail, o.email);
+  return { auth, schoolId: r.body.id as string, joinCode: r.body.joinCode as string, principalId: r.body.principal.id as string };
+}
+
+/** Principal adds a teacher (invite, no password); with `approve` (default) the profile is approved straight away. */
+export async function addTeacher(app: INestApplication, prisma: Db, mail: Mailbox, principal: Record<string, string>, o: { name: string; email: string; approve?: boolean }) {
+  const t = await api(app).post('/api/admin/teachers').set(principal).send({ name: o.name, email: o.email });
+  if (t.status !== 201) throw new Error(`add teacher ${t.status} ${JSON.stringify(t.body)}`);
+  if (o.approve !== false) await prisma.teacherProfile.update({ where: { userId: t.body.id }, data: { status: 'APPROVED', qualification: 'B.Ed', submittedAt: new Date(), reviewedAt: new Date() } });
+  const auth = await loginStaff(app, prisma, mail, o.email);
+  return { id: t.body.id as string, auth };
+}
+
+/** Staff confirm a sensitive action with an emailed code (no password). */
+export async function stepUpStaff(app: INestApplication, prisma: Db, mail: Mailbox, auth: Record<string, string>, email: string) {
+  await prisma.emailOtp.updateMany({ where: { email, purpose: 'STEP_UP' }, data: { createdAt: new Date(Date.now() - 60_000) } });
+  await api(app).post('/api/auth/step-up/email').set(auth).send({}).expect(200);
+  return api(app).post('/api/auth/step-up').set(auth).send({ emailCode: lastCodeFor(mail, email) });
+}

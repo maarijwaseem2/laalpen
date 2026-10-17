@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsOptional, IsString } from 'class-validator';
-import { CurrentUser, type AuthUser } from '../common/decorators.js';
+import { AllowSetup, CurrentUser, type AuthUser } from '../common/decorators.js';
 import { NotificationsService } from './notifications.service.js';
 
 class PushTokenDto {
@@ -11,6 +11,7 @@ class PushTokenDto {
 
 @ApiTags('notifications')
 @ApiBearerAuth()
+@AllowSetup()
 @Controller('notifications')
 export class NotificationsController {
   constructor(private readonly svc: NotificationsService) {}

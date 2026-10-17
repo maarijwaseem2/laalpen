@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { api, bootApp, photo, startFakeAi, type FakeAi } from './helpers.js';
+import { addTeacher, api, bootApp, newSchool, photo, startFakeAi, type FakeAi } from './helpers.js';
+import type { MailService } from '../src/mail/mail.service.js';
 import { CheckingService } from '../src/checking/checking.service.js';
 import { RateLimiterService } from '../src/checking/rate-limiter.service.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
@@ -9,17 +10,13 @@ import type { PrismaService } from '../src/prisma/prisma.service.js';
 describe('Phase A — accuracy, cost and queue safety', () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  let mail: MailService;
   let ai: FakeAi;
   let admin: Record<string, string>;
   let teacher: Record<string, string>;
   const ids: Record<string, string> = {};
   const students: string[] = [];
 
-  const login = async (email: string, password: string) => {
-    const r = await api(app).post('/api/auth/login').send({ email, password });
-    expect(r.status, JSON.stringify(r.body)).toBe(200);
-    return { authorization: `Bearer ${r.body.accessToken}` };
-  };
   const upload = (sid: string, n = 1, mode?: string) => {
     let r = api(app).post(`/api/teacher/tests/${ids.test}/students/${sid}/copy${mode ? `?mode=${mode}` : ''}`).set(teacher);
     for (let i = 0; i < n; i++) r = r.attach('pages', photo, { filename: `p${i}.png`, contentType: 'image/png' });
@@ -30,19 +27,17 @@ describe('Phase A — accuracy, cost and queue safety', () => {
 
   beforeAll(async () => {
     ai = await startFakeAi(18765);
-    ({ app, prisma } = await bootApp());
-    await api(app).post('/api/auth/register').send({ schoolName: 'Phase School', name: 'Admin', email: 'admin@phase.test', password: 'Secret-Mango-42' });
-    await prisma.user.update({ where: { email: 'admin@phase.test' }, data: { emailVerified: true } });
-    admin = await login('admin@phase.test', 'Secret-Mango-42');
+    ({ app, prisma, mail } = await bootApp());
+    ({ auth: admin } = await newSchool(app, prisma, mail, { schoolName: 'Phase School', email: 'admin@phase.test' }));
     const c = await api(app).post('/api/admin/classes').set(admin).send({ name: 'Class 7', grade: 7, sections: ['A'] });
     const sec = c.body.sections[0].id;
     const sb = await api(app).post('/api/admin/subjects').set(admin).send({ name: 'Science' });
-    const t = await api(app).post('/api/admin/teachers').set(admin).send({ name: 'Nadia Teacher', email: 'nadia@phase.test', password: 'Teacher-Mango-42' });
-    const a = await api(app).post('/api/admin/assignments').set(admin).send({ teacherId: t.body.id, sectionId: sec, subjectId: sb.body.id });
+    const t = await addTeacher(app, prisma, mail, admin, { name: 'Nadia Teacher', email: 'nadia@phase.test' });
+    const a = await api(app).post('/api/admin/assignments').set(admin).send({ teacherId: t.id, sectionId: sec, subjectId: sb.body.id });
     for (let i = 1; i <= 6; i++) {
       await api(app).post('/api/admin/students').set(admin).send({ name: `Kid ${i}`, email: `kid${i}@phase.test`, sectionId: sec, rollNo: String(i).padStart(2, '0') });
     }
-    teacher = await login('nadia@phase.test', 'Teacher-Mango-42');
+    teacher = t.auth;
     const test = await api(app).post(`/api/teacher/assignments/${a.body.id}/tests`).set(teacher).send({
       title: 'Science Quiz', expectedPages: 2, confirmKey: true,
       questions: [

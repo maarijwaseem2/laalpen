@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { api, bootApp } from './helpers.js';
+import { addTeacher, api, bootApp, newSchool } from './helpers.js';
+import type { MailService } from '../src/mail/mail.service.js';
 import { env } from '../src/config/env.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { StorageService } from '../src/storage/storage.service.js';
@@ -12,6 +13,7 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 describe('Live fixes — db file storage, device-confirm skip domains', () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  let mail: MailService;
   let storage: StorageService;
   const prev = { ...process.env };
   const prevDriver = env.storageDriver;
@@ -19,7 +21,7 @@ describe('Live fixes — db file storage, device-confirm skip domains', () => {
   beforeAll(async () => {
     process.env.DEVICE_CONFIRM_ROLES = 'TEACHER';
     process.env.DEVICE_CONFIRM_SKIP_DOMAINS = 'demo.test';
-    ({ app, prisma } = await bootApp());
+    ({ app, prisma, mail } = await bootApp());
     storage = app.get(StorageService);
     (env as { storageDriver: string }).storageDriver = 'db';
   });
@@ -49,21 +51,18 @@ describe('Live fixes — db file storage, device-confirm skip domains', () => {
     await expect(storage.save('../etc/passwd', PNG)).rejects.toThrow();
   });
 
-  it('teachers of a skip domain sign in on a new device without the email code; other teachers still confirm', async () => {
-    await api(app).post('/api/auth/register').send({ schoolName: 'Skip School', name: 'Head', email: 'head@skip.test', password: 'Skip-Garden-91' }).expect(201);
-    await prisma.user.update({ where: { email: 'head@skip.test' }, data: { emailVerified: true } });
-    const head = await api(app).post('/api/auth/login').send({ email: 'head@skip.test', password: 'Skip-Garden-91' });
-    const auth = { authorization: `Bearer ${head.body.accessToken}` };
-    await api(app).post('/api/admin/teachers').set(auth).send({ name: 'Demo Teacher', email: 'sana@demo.test', password: 'Blue-Window-55' }).expect(201);
-    await api(app).post('/api/admin/teachers').set(auth).send({ name: 'Real Teacher', email: 'real@skip.test', password: 'Blue-Window-56' }).expect(201);
-    for (const [email, password] of [['sana@demo.test', 'Blue-Window-55'], ['real@skip.test', 'Blue-Window-56']]) {
-      const first = await api(app).post('/api/auth/login').send({ email, password, deviceId: 'tab-1' });
-      expect(first.body.accessToken).toBeTruthy();
-    }
-    const demo = await api(app).post('/api/auth/login').send({ email: 'sana@demo.test', password: 'Blue-Window-55', deviceId: 'android-new' });
-    expect(demo.body.accessToken).toBeTruthy();
-    const real = await api(app).post('/api/auth/login').send({ email: 'real@skip.test', password: 'Blue-Window-56', deviceId: 'android-new' });
-    expect(real.body).toMatchObject({ mfaRequired: true, kind: 'EMAIL_DEVICE' });
+  it('demo-school staff (no mailbox) see their sign-in code on screen; real staff only get it by email', async () => {
+    const { auth } = await newSchool(app, prisma, mail, { schoolName: 'Skip School', email: 'head@skip.test' });
+    await addTeacher(app, prisma, mail, auth, { name: 'Real Teacher', email: 'real@skip.test' });
+    await api(app).post('/api/admin/teachers').set(auth).send({ name: 'Demo Teacher', email: 'sana@laalpen.demo' }).expect(201);
+    const demo = await api(app).post('/api/auth/email-code/start').send({ email: 'sana@laalpen.demo' }).expect(200);
+    expect(demo.body.demoCode).toMatch(/^\d{6}$/);
+    const signedIn = await api(app).post('/api/auth/email-code/verify').send({ email: 'sana@laalpen.demo', code: demo.body.demoCode }).expect(200);
+    expect(signedIn.body.user.role).toBe('TEACHER');
+    await prisma.emailOtp.updateMany({ where: { email: 'real@skip.test' }, data: { createdAt: new Date(Date.now() - 60_000) } });
+    const real = await api(app).post('/api/auth/email-code/start').send({ email: 'real@skip.test' }).expect(200);
+    expect(real.body.demoCode).toBeUndefined();
+    expect(real.body.email).toBe('re**@skip.test');
   });
 
   it('liveness endpoint answers without touching the database or AI service', async () => {

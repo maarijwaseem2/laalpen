@@ -39,7 +39,9 @@ The marked page on the site is an illustration, not a photograph of a real stude
 
 **Roster.** Schools import a register from a spreadsheet, then accounts come later. Class codes and claim cards let a student who matches the register join immediately. Leaving a school keeps the marks. Promotion keeps an enrollment history.
 
-**Families.** Parents sign in with a mobile number and see every child, including from a link, without installing the app. Students see the checked copy, the trend, and what to practise. The student and parent screens switch to Urdu (right to left, Nastaliq).
+**Roles.** The LaalPen owner (one super admin) adds each school and its principal. The principal completes the school profile and adds teachers; each teacher completes a profile (qualification, subjects, the classes they teach) and waits for the principal's approval before any student data opens. Staff never use passwords: they sign in with a single-use emailed code, a passkey (paused with an email alert after 3 failed tries), or Google for an account that already exists.
+
+**Families.** Parent / Student is the only public sign-up: name, email (verified with a code), optional mobile number, password. They sign in with email or mobile number, add a child with one code box (class code like ALN-9A or a printed card code), and see every child, including from a link, without installing the app. Students see the checked copy, the trend, and what to practise. The student and parent screens switch to Urdu (right to left, Nastaliq).
 
 **Principal.** Time from photo to result, copies waiting on each teacher, a topic-by-class view, and a spreadsheet export for board records. The activity log cannot be edited or deleted.
 
@@ -100,7 +102,7 @@ The model quotes what the student wrote before it awards marks. Blank answers st
 | App | Expo SDK 57, React Native, React Native Paper, Expo Router |
 | API | NestJS 12, Prisma 7, PostgreSQL 16, pg-boss |
 | Checker | FastAPI, OpenAI vision, optional Gemini for Urdu, OpenCV, SymPy, Pillow |
-| Sign-in | Email, Google, authenticator app, passkeys. Parents use a mobile number. |
+| Sign-in | Staff: emailed one-time code, passkeys, Google (existing accounts only), optional authenticator app. Parent / Student: email or mobile number + password, Google. |
 | Files | Local disk, or S3-compatible storage |
 | Delivery | Website on Vercel, API on Render, Android APK from the site |
 

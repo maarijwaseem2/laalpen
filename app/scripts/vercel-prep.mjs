@@ -28,3 +28,19 @@ if (existsSync(join(dist, 'home.html'))) {
   renameSync(join(dist, 'home.html'), join(dist, 'index.html'));
   console.log('vercel-prep: website -> index.html, app shell -> app.html');
 }
+
+// Stale-chunk guard: a tab (or a home-screen shortcut) still holding an old app.html asks for a JS chunk that no
+// longer exists after a deploy (or that the old laalpen-app domain used to redirect cross-origin). Reload once to
+// get the fresh HTML; sessionStorage stops a reload loop.
+const appHtml = join(dist, existsSync(join(dist, 'app.html')) ? 'app.html' : 'index.html');
+const GUARD = `<script>(function(){var K='laalpen.chunk-reload';function again(){try{var t=+sessionStorage.getItem(K)||0;if(Date.now()-t<60000)return;sessionStorage.setItem(K,String(Date.now()));}catch(e){return;}location.reload();}
+window.addEventListener('error',function(e){var s=e&&e.target;if(s&&s.tagName==='SCRIPT'&&/\\/_expo\\/static\\//.test(s.src||''))again();},true);
+window.addEventListener('unhandledrejection',function(e){var m=String((e&&e.reason&&(e.reason.message||e.reason))||'');if(/Loading module|ChunkLoadError|Loading chunk|dynamically imported module|Importing a module script failed/i.test(m))again();});
+window.addEventListener('load',function(){setTimeout(function(){try{sessionStorage.removeItem(K);}catch(e){}},15000);});})();</script>`;
+if (existsSync(appHtml)) {
+  const html = readFileSync(appHtml, 'utf8');
+  if (!html.includes('laalpen.chunk-reload')) {
+    writeFileSync(appHtml, html.replace('<head>', `<head>${GUARD}`));
+    console.log(`vercel-prep: stale-chunk reload guard added to ${appHtml.split('/').pop()}`);
+  }
+}

@@ -58,7 +58,8 @@ export class ParentsService {
   /** All children of this parent (every guardian row with this account). */
   async children(userId: string) {
     const links = await this.prisma.studentGuardian.findMany({
-      where: { guardian: { userId } },
+      // a school paused by LaalPen is hidden until it is restored
+      where: { guardian: { userId }, student: { school: { suspendedAt: null } } },
       include: { student: { include: { section: { include: { schoolClass: true } }, school: { select: { id: true, name: true } } } } },
     });
     const seen = new Set<string>();
@@ -77,7 +78,7 @@ export class ParentsService {
 
   /** The child, only if this parent is linked to them. */
   async child(userId: string, studentId: string): Promise<StudentRef> {
-    const link = await this.prisma.studentGuardian.findFirst({ where: { studentId, guardian: { userId } }, include: { student: true } });
+    const link = await this.prisma.studentGuardian.findFirst({ where: { studentId, guardian: { userId }, student: { school: { suspendedAt: null } } }, include: { student: true } });
     if (!link) throw new NotFoundException('Child not found');
     const s = link.student;
     return { id: s.id, schoolId: s.schoolId, sectionId: s.sectionId, name: s.name, rollNo: s.rollNo };

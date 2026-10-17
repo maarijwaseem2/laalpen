@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import {
   generateAuthenticationOptions, generateRegistrationOptions, verifyAuthenticationResponse, verifyRegistrationResponse,
   type AuthenticationResponseJSON, type AuthenticatorTransport as AuthenticatorTransportFuture, type RegistrationResponseJSON,
@@ -8,6 +8,7 @@ import { AuditService } from '../audit/audit.service.js';
 import { MailService } from '../mail/mail.service.js';
 import { env } from '../config/env.js';
 import { AuthService } from './auth.service.js';
+import { isStaff } from '../common/roles.js';
 import { SecurityService, type DeviceInfo } from './security.service.js';
 
 const TTL = 5 * 60_000;
@@ -118,6 +119,14 @@ export class PasskeysService {
     const c = await this.useChallenge(challengeId, 'login');
     const pk = await this.prisma.passkey.findUnique({ where: { credentialId: response.id }, include: { user: true } });
     if (!pk) throw new UnauthorizedException('This passkey is not registered with LaalPen');
+    if (pk.user.passkeyBlockedAt) {
+      throw new ForbiddenException({
+        message: isStaff(pk.user.role)
+          ? 'Passkey sign-in is paused after too many failed tries. Sign in with the code we email you to turn it back on.'
+          : 'Passkey sign-in is paused after too many failed tries. Sign in with your password (or reset it by email) to turn it back on.',
+        code: 'PASSKEY_BLOCKED',
+      });
+    }
     let v;
     try {
       v = await verifyAuthenticationResponse({
@@ -129,14 +138,43 @@ export class PasskeysService {
         requireUserVerification: false,
       });
     } catch (e) {
+      await this.failed(pk.user, device);
       throw new UnauthorizedException(`Passkey sign-in failed: ${(e as Error).message}`);
     }
-    if (!v.verified) throw new UnauthorizedException('Passkey sign-in failed');
+    if (!v.verified) {
+      await this.failed(pk.user, device);
+      throw new UnauthorizedException('Passkey sign-in failed');
+    }
     if (!pk.user.isActive) throw new UnauthorizedException('Your account is disabled. Please contact your school.');
+    await this.auth.assertSchoolActive(pk.user);
     await this.prisma.passkey.update({ where: { id: pk.id }, data: { counter: BigInt(v.authenticationInfo.newCounter), lastUsedAt: new Date() } });
+    if (pk.user.passkeyFailures) await this.prisma.user.update({ where: { id: pk.userId }, data: { passkeyFailures: 0 } });
     await this.security.rememberDevice(pk.userId, device, 'passkey');
     await this.audit.record({ schoolId: pk.user.schoolId, actorId: pk.userId, actorRole: pk.user.role, action: 'login.passkey', entity: 'user', entityId: pk.userId, ip: device.ip });
     // a passkey is already two factors (the device + its fingerprint/PIN): no extra code
     return this.auth.session(pk.userId, device, 'passkey', true);
+  }
+
+  /**
+   * A failed passkey sign-in. After MAX_PASSKEY_FAILURES in a row passkey sign-in is paused, the owner gets a
+   * security email, and only an email code (staff) or the password / emailed reset (family) turns it back on.
+   */
+  private async failed(user: { id: string; name: string; email: string | null; schoolId: string | null; role: string }, device: DeviceInfo) {
+    const u = await this.prisma.user.update({ where: { id: user.id }, data: { passkeyFailures: { increment: 1 } } });
+    await this.audit.record({ schoolId: user.schoolId, actorId: user.id, actorRole: user.role, action: 'login.passkey-failed', entity: 'user', entityId: user.id, ip: device.ip });
+    if (u.passkeyFailures < env.maxPasskeyFailures) return;
+    const blocked = await this.prisma.user.updateMany({ where: { id: user.id, passkeyBlockedAt: null }, data: { passkeyBlockedAt: new Date(), passkeyFailures: 0 } });
+    if (!blocked.count) return;
+    await this.audit.record({ schoolId: user.schoolId, actorId: user.id, actorRole: user.role, action: 'passkey.blocked', entity: 'user', entityId: user.id, ip: device.ip });
+    if (user.email) {
+      await this.mail
+        .securityAlert(user.email, user.name, `${env.maxPasskeyFailures} failed passkey sign-ins`, [
+          `Someone tried to sign in to your LaalPen account with a passkey ${env.maxPasskeyFailures} times and failed${device.ip ? ` (IP ${device.ip})` : ''}.`,
+          isStaff(user.role)
+            ? 'Passkey sign-in is paused. Next time, sign in with the code we email you; that turns passkeys back on.'
+            : 'Passkey sign-in is paused. Sign in with your password (or reset it by email) to turn passkeys back on.',
+        ], this.security.panicUrl(user.id))
+        .catch(() => undefined);
+    }
   }
 }

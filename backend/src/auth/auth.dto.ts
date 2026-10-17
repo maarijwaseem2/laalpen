@@ -1,4 +1,4 @@
-import { IsEmail, IsIn, IsOptional, IsString, Length, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsIn, IsOptional, IsString, Length, Matches, MaxLength, MinLength } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 const lower = () => Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value));
@@ -7,12 +7,11 @@ const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.t
 const PASSWORD_RULE = /^[\s\S]{8,128}$/;
 const PASSWORD_MSG = 'Password must be 8 to 128 characters (a short sentence works well)';
 
-export class RegisterSchoolDto {
-  @trim() @IsString() @MinLength(2) @MaxLength(120) schoolName: string;
-  @trim() @IsOptional() @IsString() @MaxLength(80) city?: string;
-  @trim() @IsOptional() @IsString() @MaxLength(80) board?: string;
+/** The only public sign-up: a Parent / Student account. */
+export class RegisterParentDto {
   @trim() @IsString() @MinLength(2) @MaxLength(80) name: string;
-  @lower() @IsEmail() email: string;
+  @lower() @IsEmail({}, { message: 'Enter a valid email address' }) email: string;
+  @trim() @IsOptional() @IsString() @MaxLength(30) phone?: string;
   @IsString() @Matches(PASSWORD_RULE, { message: PASSWORD_MSG }) password: string;
 }
 
@@ -22,9 +21,22 @@ export class DeviceDto {
   @trim() @IsOptional() @IsString() @MaxLength(80) deviceName?: string;
 }
 
+/** Parent / Student password sign-in: email OR Pakistani mobile number. */
 export class LoginDto extends DeviceDto {
-  @lower() @IsEmail() email: string;
+  @lower() @IsOptional() @IsEmail({}, { message: 'Enter a valid email address' }) email?: string;
+  @trim() @IsOptional() @IsString() @MaxLength(30) phone?: string;
   @IsString() @MinLength(1) @MaxLength(200) password: string;
+}
+
+/** Staff sign-in, step 1: email the one-time code. */
+export class EmailCodeStartDto {
+  @lower() @IsEmail({}, { message: 'Enter a valid email address' }) email: string;
+}
+
+/** Staff sign-in, step 2: the 6-digit code from the email (or the email link). */
+export class EmailCodeVerifyDto extends DeviceDto {
+  @lower() @IsEmail() email: string;
+  @trim() @IsString() @Length(6, 6, { message: 'Enter the 6-digit code' }) code: string;
 }
 
 export class VerifyLoginDto extends DeviceDto {
@@ -58,6 +70,8 @@ export class ResetPasswordDto {
 
 export class GoogleLoginDto extends DeviceDto {
   @IsString() @MinLength(10) idToken: string;
+  /** Parent / Student sign-up with Google (never creates staff) */
+  @IsOptional() @IsBoolean() signup?: boolean;
 }
 
 export class RefreshDto {
@@ -78,6 +92,8 @@ export class StepUpDto {
   @IsOptional() @IsString() @MaxLength(200) password?: string;
   @trim() @IsOptional() @IsString() @MaxLength(20) code?: string;
   @IsOptional() @IsString() @MaxLength(4000) idToken?: string;
+  /** staff: the code emailed by POST /auth/step-up/email */
+  @trim() @IsOptional() @IsString() @Length(6, 6) emailCode?: string;
 }
 
 export class VerifyEmailWithDeviceDto extends DeviceDto {

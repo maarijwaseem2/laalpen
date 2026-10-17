@@ -13,7 +13,10 @@ datasource db {
 }
 
 enum Role {
-  ADMIN
+  /// LaalPen platform owner: creates schools and their principals, sees every school
+  SUPER_ADMIN
+  /// runs one school (was ADMIN): adds and verifies teachers
+  PRINCIPAL
   TEACHER
   STUDENT
   /// parents sign in with their phone number and see all their children
@@ -112,6 +115,18 @@ enum OtpPurpose {
   DEVICE_CONFIRM
   /// parent sign-in code sent by SMS/WhatsApp (the "email" column then holds the +92 phone number)
   PHONE_LOGIN
+  /// staff (super admin / principal / teacher) sign in with a one-time emailed code, never a password
+  LOGIN_CODE
+  /// staff confirm a sensitive action with an emailed code
+  STEP_UP
+}
+
+/// a teacher's profile: the principal must approve it before the teacher sees any student
+enum TeacherStatus {
+  PROFILE_INCOMPLETE
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum NotificationType {
@@ -130,8 +145,18 @@ model School {
   joinCode          String            @unique
   /// days to keep copy photos after results are published (null = keep)
   copyRetentionDays Int?
+  address           String?
+  phone             String?
+  logoUrl           String?
+  /// the principal filled in the school profile (first sign-in)
+  profileCompletedAt DateTime?
+  /// set by the super admin: nobody in this school can sign in
+  suspendedAt       DateTime?
+  suspendReason     String?
+  createdById       String?
   createdAt         DateTime          @default(now())
   users             User[]
+  teacherProfiles   TeacherProfile[]
   classes           SchoolClass[]
   subjects          Subject[]
   sessions          AcademicSession[]
@@ -162,6 +187,12 @@ model User {
   totpEnabledAt     DateTime?
   failedLogins      Int                  @default(0)
   lockedUntil       DateTime?
+  /// failed passkey sign-ins in a row; at 3 the owner is emailed and must sign in with an email code
+  passkeyFailures   Int                  @default(0)
+  passkeyBlockedAt  DateTime?
+  /// staff added by the super admin / principal (invite email sent)
+  invitedAt         DateTime?
+  invitedById       String?
   passwordChangedAt DateTime?
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
@@ -178,6 +209,7 @@ model User {
   notifications     Notification[]
   refreshTokens     RefreshToken[]
   pushTokens        PushToken[]
+  teacherProfile    TeacherProfile?
 
   @@index([schoolId, role])
   @@map("users")
@@ -900,4 +932,27 @@ model StoredFile {
   createdAt   DateTime @default(now())
 
   @@map("stored_files")
+}
+
+/// What a teacher fills in on first sign-in. Sections are [{sectionId, subject}] (e.g. 9-A Maths).
+/// Until the principal approves (status APPROVED) the teacher cannot see students or check copies.
+model TeacherProfile {
+  userId        String        @id
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schoolId      String
+  school        School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  phone         String?
+  qualification String?
+  subjects      String[]      @default([])
+  sections      Json          @default("[]")
+  status        TeacherStatus @default(PROFILE_INCOMPLETE)
+  rejectReason  String?
+  submittedAt   DateTime?
+  reviewedAt    DateTime?
+  reviewedById  String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([schoolId, status])
+  @@map("teacher_profiles")
 }

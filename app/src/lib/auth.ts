@@ -3,6 +3,8 @@ import { secure } from './storage';
 import type { Session, User } from './types';
 
 const KEY = 'laalpen.session';
+/** a class / card code (from a QR) waiting to be linked once the family account exists */
+export const PENDING_CODE_KEY = 'laalpen.pending.code';
 
 interface AuthState {
   ready: boolean;
@@ -46,7 +48,13 @@ export const useAuth = create<AuthState>((set, get) => ({
   },
 }));
 
+export const isStaffRole = (role?: string) => role === 'SUPER_ADMIN' || role === 'PRINCIPAL' || role === 'TEACHER';
+
+/** Where an account lands: setup steps first (school profile, teacher approval), then its home. */
 export const homeFor = (role?: string, user?: User | null) => {
+  if (role === 'SUPER_ADMIN') return '/platform';
+  if (role === 'PRINCIPAL' && user?.school && user.school.profileComplete === false) return '/school-setup';
+  if (role === 'TEACHER' && user?.teacher && user.teacher.status !== 'APPROVED') return '/teacher-setup';
   if (role === 'STUDENT' && user && !user.student) return '/pending';
-  return role === 'ADMIN' ? '/admin' : role === 'TEACHER' ? '/teacher' : role === 'PARENT' ? '/parent' : '/student';
+  return role === 'PRINCIPAL' ? '/admin' : role === 'TEACHER' ? '/teacher' : role === 'PARENT' ? '/parent' : '/student';
 };

@@ -10,8 +10,10 @@ import { PaperProvider } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Toaster } from '@/components/feedback';
 import { StepUpDialog, askStepUp } from '@/components/StepUp';
-import { useAuth } from '@/lib/auth';
-import { setMfaSetupHandler, setStepUpHandler } from '@/lib/api';
+import { homeFor, useAuth } from '@/lib/auth';
+import { api, setMfaSetupHandler, setSetupGateHandler, setStepUpHandler } from '@/lib/api';
+import { toast } from '@/components/feedback';
+import type { User } from '@/lib/types';
 import { queryClient } from '@/lib/query';
 import { darkTheme, lightTheme, useThemeMode, withUrdu } from '@/lib/theme';
 import { useLang } from '@/lib/i18n';
@@ -31,6 +33,28 @@ setMfaSetupHandler(() => {
   const { user, setUser } = useAuth.getState();
   if (user && !user.mfaSetupRequired) setUser({ ...user, mfaSetupRequired: true });
   router.replace('/security/two-factor');
+});
+
+// the server says a setup step comes first (school profile / teacher approval) or the school is paused
+let gateBusy = false;
+setSetupGateHandler(async (code) => {
+  if (gateBusy) return;
+  gateBusy = true;
+  try {
+    if (code === 'SCHOOL_SUSPENDED') {
+      toast('This school is paused on LaalPen. Please contact LaalPen support.');
+      await useAuth.getState().clear();
+      router.replace('/login');
+      return;
+    }
+    const me = await api.get<User>('/auth/me');
+    useAuth.getState().setUser(me);
+    router.replace(homeFor(me.role, me) as any);
+  } catch {
+    /* offline: try again on the next request */
+  } finally {
+    setTimeout(() => (gateBusy = false), 1500);
+  }
 });
 
 export default function RootLayout() {

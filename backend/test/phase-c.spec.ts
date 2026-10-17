@@ -1,7 +1,8 @@
 import type { INestApplication } from '@nestjs/common';
 import sharp from 'sharp';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { api, bootApp, startFakeAi, waitFor, type FakeAi } from './helpers.js';
+import { addTeacher, api, bootApp, newSchool, startFakeAi, stepUpStaff, waitFor, type FakeAi } from './helpers.js';
+import type { MailService } from '../src/mail/mail.service.js';
 import { CheckingService } from '../src/checking/checking.service.js';
 import { SheetsService } from '../src/scan/sheets.service.js';
 import { mcqLetter } from '../src/scan/scan.service.js';
@@ -11,17 +12,13 @@ import type { PrismaService } from '../src/prisma/prisma.service.js';
 describe('Phase C — scanning, OMR, insights, exports', () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  let mail: MailService;
   let ai: FakeAi;
   let admin: Record<string, string>;
   let teacher: Record<string, string>;
   const ids: Record<string, string> = {};
   const kids: Record<string, string> = {};
 
-  const login = async (email: string, password: string) => {
-    const r = await api(app).post('/api/auth/login').send({ email, password });
-    expect(r.status, JSON.stringify(r.body)).toBe(200);
-    return { authorization: `Bearer ${r.body.accessToken}` };
-  };
   /** a distinct small photo per call (same bytes would look like one photo uploaded twice) */
   let shade = 10;
   const pic = () => sharp({ create: { width: 40, height: 56, channels: 3, background: { r: 250, g: 250, b: (shade += 7) % 255 } } }).jpeg().toBuffer();
@@ -29,19 +26,17 @@ describe('Phase C — scanning, OMR, insights, exports', () => {
   beforeAll(async () => {
     ai = await startFakeAi(18765);
     ai.lastState = 'sure';
-    ({ app, prisma } = await bootApp());
-    await api(app).post('/api/auth/register').send({ schoolName: 'Scan School', name: 'Principal', email: 'admin@scan.test', password: 'Secret-Mango-42' });
-    await prisma.user.update({ where: { email: 'admin@scan.test' }, data: { emailVerified: true } });
-    admin = await login('admin@scan.test', 'Secret-Mango-42');
+    ({ app, prisma, mail } = await bootApp());
+    ({ auth: admin } = await newSchool(app, prisma, mail, { schoolName: 'Scan School', email: 'admin@scan.test' }));
     const c = await api(app).post('/api/admin/classes').set(admin).send({ name: 'Class 8', grade: 8, sections: ['A'] });
     ids.sec = c.body.sections[0].id;
     const sub = await api(app).post('/api/admin/subjects').set(admin).send({ name: 'Science' });
-    const t = await api(app).post('/api/admin/teachers').set(admin).send({ name: 'Kiran Teacher', email: 'kiran@scan.test', password: 'Teacher-Mango-42' });
-    const a = await api(app).post('/api/admin/assignments').set(admin).send({ teacherId: t.body.id, sectionId: ids.sec, subjectId: sub.body.id });
+    const t = await addTeacher(app, prisma, mail, admin, { name: 'Kiran Teacher', email: 'kiran@scan.test' });
+    const a = await api(app).post('/api/admin/assignments').set(admin).send({ teacherId: t.id, sectionId: ids.sec, subjectId: sub.body.id });
     ids.assignment = a.body.id;
-    teacher = await login('kiran@scan.test', 'Teacher-Mango-42');
+    teacher = t.auth;
     await api(app).post(`/api/teacher/sections/${ids.sec}/students`).set(teacher).send({ text: '01 Asad Ali\n02 Bushra Khan\n03 Faisal Noor' }).expect(200);
-    for (const s of await prisma.studentProfile.findMany()) kids[s.rollNo] = s.id;
+    for (const s of await prisma.studentProfile.findMany({ where: { sectionId: ids.sec } })) kids[s.rollNo] = s.id;
     const written = await api(app).post(`/api/teacher/assignments/${ids.assignment}/tests`).set(teacher).send({
       title: 'Plants', expectedPages: 2, confirmKey: true,
       questions: [
@@ -187,7 +182,7 @@ describe('Phase C — scanning, OMR, insights, exports', () => {
     await prisma.session.updateMany({ where: { user: { email: 'admin@scan.test' } }, data: { stepUpAt: null } });
     const blocked = await api(app).get('/api/admin/export/results?format=xlsx').set(admin);
     expect(blocked.body.code).toBe('STEP_UP_REQUIRED');
-    await api(app).post('/api/auth/step-up').set(admin).send({ password: 'Secret-Mango-42' }).expect(200);
+    expect((await stepUpStaff(app, prisma, mail, admin, 'admin@scan.test')).status).toBe(200);
     const x = await api(app).get('/api/admin/export/results?format=xlsx').set(admin);
     expect(x.status, JSON.stringify(x.body)).toBe(200);
     expect(x.body.rows).toBe(1);

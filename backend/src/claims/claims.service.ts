@@ -132,11 +132,15 @@ export class ClaimsService implements OnModuleInit {
 
   /** Exact match = same section, same roll, unclaimed, and the date of birth (or the name) agrees. */
   private async tryAutoLink(claimId: string) {
-    const c = await this.prisma.claimRequest.findUniqueOrThrow({ where: { id: claimId } });
+    const c = await this.prisma.claimRequest.findUniqueOrThrow({ where: { id: claimId }, include: { user: { select: { role: true } } } });
+    const family = c.user.role === 'PARENT';
     let studentId = c.matchedStudentId;
     if (!studentId) {
-      const candidates = await this.prisma.studentProfile.findMany({ where: { sectionId: c.sectionId, rollNo: c.rollNo, status: 'ACTIVE', userId: null } });
-      const exact = candidates.filter((s) => (s.dob && c.dob ? s.dob.toISOString().slice(0, 10) === c.dob.toISOString().slice(0, 10) : false) || (!s.dob && nameSimilarity(s.name, c.name) >= 0.67));
+      // a parent links to a child who may already have their own student account; a student claims an unclaimed record
+      const candidates = await this.prisma.studentProfile.findMany({ where: { sectionId: c.sectionId, rollNo: c.rollNo, status: 'ACTIVE', ...(family ? {} : { userId: null }) } });
+      const sameDob = (s: { dob: Date | null }) => (s.dob && c.dob ? s.dob.toISOString().slice(0, 10) === c.dob.toISOString().slice(0, 10) : false);
+      // family accounts need the date of birth on the school record (a classmate knows names and roll numbers); otherwise the teacher decides
+      const exact = candidates.filter((s) => (sameDob(s) && nameSimilarity(s.name, c.name) >= (family ? 0.5 : 0)) || (!family && !s.dob && nameSimilarity(s.name, c.name) >= 0.67));
       if (exact.length !== 1) return false;
       if (exact[0].admissionNo && c.admissionNo && exact[0].admissionNo.toLowerCase() !== c.admissionNo.toLowerCase()) return false;
       studentId = exact[0].id;
@@ -148,8 +152,9 @@ export class ClaimsService implements OnModuleInit {
   private async link(claimId: string, studentId: string, reviewerId: string | null) {
     const c = await this.prisma.claimRequest.findUniqueOrThrow({ where: { id: claimId }, include: { user: true } });
     const s = await this.prisma.studentProfile.findUniqueOrThrow({ where: { id: studentId }, include: { section: { include: { schoolClass: true } } } });
-    if (s.userId && s.userId !== c.userId) throw new ConflictException(`${s.name} is already linked to another account`);
     if (s.schoolId !== c.schoolId) throw new BadRequestException('Student is in another school');
+    if (c.user.role === 'PARENT') return this.linkFamily(c, s, reviewerId);
+    if (s.userId && s.userId !== c.userId) throw new ConflictException(`${s.name} is already linked to another account`);
     await this.prisma.$transaction([
       this.prisma.studentProfile.update({ where: { id: studentId }, data: { userId: c.userId } }),
       this.prisma.user.update({ where: { id: c.userId }, data: { schoolId: s.schoolId } }),
@@ -173,6 +178,88 @@ export class ClaimsService implements OnModuleInit {
         button: { label: 'Open LaalPen', url: env.appUrl },
       });
     }
+  }
+
+  /**
+   * Parent / Student (family) account: a child is linked through a guardian row that belongs only to this
+   * account (never matched by phone: the phone typed at sign-up is not verified). One account, many children.
+   */
+  private async linkFamily(c: { id: string; userId: string; user: { name: string; email: string | null; schoolId: string | null } }, s: { id: string; schoolId: string; name: string; rollNo: string; section: { name: string; schoolClass: { name: string } } }, reviewerId: string | null) {
+    const key = `acct:${c.userId}`;
+    await this.prisma.$transaction(async (tx) => {
+      const g = await tx.guardian.upsert({ where: { schoolId_phone: { schoolId: s.schoolId, phone: key } }, update: { userId: c.userId }, create: { schoolId: s.schoolId, phone: key, name: c.user.name, userId: c.userId } });
+      await tx.studentGuardian.upsert({ where: { studentId_guardianId: { studentId: s.id, guardianId: g.id } }, update: {}, create: { studentId: s.id, guardianId: g.id, relation: 'family-account' } });
+      await tx.claimRequest.update({ where: { id: c.id }, data: { status: 'APPROVED', matchedStudentId: s.id, reviewedById: reviewerId, reviewedAt: new Date(), rejectReason: null } });
+      if (!c.user.schoolId) await tx.user.update({ where: { id: c.userId }, data: { schoolId: s.schoolId } });
+    });
+    await this.audit.record({ schoolId: s.schoolId, actorId: reviewerId, action: reviewerId ? 'family.link-approved' : 'family.auto-linked', entity: 'student', entityId: s.id, after: { userId: c.userId, claimId: c.id } });
+    await this.notifications.notify([c.userId], {
+      type: 'ACCOUNT',
+      title: 'Child linked',
+      body: `${s.name} (${s.section.schoolClass.name} ${s.section.name}, roll ${s.rollNo}) is now on your account. Checked copies and marks will appear here.`,
+    });
+    if (c.user.email && reviewerId) {
+      await this.mail
+        .send({
+          to: c.user.email,
+          toName: c.user.name,
+          subject: `${s.name} is linked to your LaalPen account`,
+          heading: 'Request approved',
+          paragraphs: [`Assalam o Alaikum ${c.user.name},`, `The school approved your request. ${s.name} (${s.section.schoolClass.name} ${s.section.name}, roll ${s.rollNo}) is now on your account.`, 'Open LaalPen to see test names, dates, marks and checked copies.'],
+          button: { label: 'Open LaalPen', url: env.appUrl },
+        })
+        .catch(() => undefined);
+    }
+  }
+
+  // ---------- family account: one code box (class code / school code / card code, detected) ----------
+
+  /** What kind of code is this? A card code names one child; a class or school code needs the child's details. */
+  async detectCode(code: string) {
+    const card = (await this.roster.useClaimCode(code, 'STUDENT', false)) ?? (await this.roster.useClaimCode(code, 'PARENT', false));
+    if (card) {
+      const st = await this.prisma.studentProfile.findUniqueOrThrow({ where: { id: card.id }, include: { section: { include: { schoolClass: { include: { school: true } } } } } });
+      return { kind: 'card' as const, child: { name: st.name, className: st.section.schoolClass.name, sectionName: st.section.name, rollNo: st.rollNo, school: st.section.schoolClass.school.name } };
+    }
+    try {
+      return { kind: 'class' as const, school: await this.lookup(code) };
+    } catch {
+      throw new NotFoundException('This code is not right. Check it with the teacher, e.g. ALN-9A (class code) or K7QP-3MXA (card code).');
+    }
+  }
+
+  async familyLink(userId: string, dto: { code: string; childName?: string; rollNo?: string; dob?: string; sectionId?: string }) {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    if (user.role !== 'PARENT') throw new ForbiddenException('Only Parent / Student accounts link a child here');
+    const recent = await this.prisma.claimRequest.count({ where: { userId, createdAt: { gt: new Date(Date.now() - 3_600_000) } } });
+    if (recent >= 10) throw new BadRequestException('Too many requests. Please try again later or ask the school.');
+    for (const kind of ['STUDENT', 'PARENT'] as const) {
+      const peek = await this.roster.useClaimCode(dto.code, kind, false);
+      if (!peek) continue;
+      const s = await this.roster.useClaimCode(dto.code, kind, true);
+      if (!s) break;
+      const c = await this.prisma.claimRequest.create({ data: { schoolId: s.schoolId, sectionId: s.sectionId, userId, name: s.name, rollNo: s.rollNo, matchedStudentId: s.id } });
+      await this.link(c.id, s.id, null);
+      return { status: 'LINKED' as const, child: s.name };
+    }
+    if (!dto.childName?.trim() || !dto.rollNo?.trim()) throw new BadRequestException({ message: 'Enter your child’s name and roll number', code: 'NEED_CHILD_DETAILS' });
+    const { section, schoolId } = await this.resolveSection(dto.code, dto.sectionId);
+    const dup = await this.prisma.claimRequest.findFirst({ where: { userId, sectionId: section.id, rollNo: dto.rollNo.trim(), status: 'PENDING' } });
+    if (dup) return { status: 'PENDING' as const, child: dup.name };
+    const c = await this.prisma.claimRequest.create({
+      data: { schoolId, sectionId: section.id, userId, name: dto.childName.trim(), rollNo: dto.rollNo.trim(), dob: dto.dob ? new Date(dto.dob) : null },
+    });
+    if (await this.tryAutoLink(c.id)) return { status: 'LINKED' as const, child: c.name };
+    await this.notifications.notifySectionReviewers(section.id, {
+      title: 'A parent wants to see results',
+      body: `${user.name} asked to link ${c.name} (roll ${c.rollNo}) in ${section.schoolClass.name} ${section.name}. Approve only if this is the right family.`,
+    });
+    return { status: 'PENDING' as const, child: c.name };
+  }
+
+  async familyRequests(userId: string) {
+    const rows = await this.prisma.claimRequest.findMany({ where: { userId, status: { in: ['PENDING', 'REJECTED'] } }, orderBy: { createdAt: 'desc' }, take: 10, include: { section: { include: { schoolClass: { include: { school: true } } } } } });
+    return rows.map((c) => ({ id: c.id, name: c.name, rollNo: c.rollNo, status: c.status, rejectReason: c.rejectReason, className: c.section.schoolClass.name, sectionName: c.section.name, school: c.section.schoolClass.school.name, createdAt: c.createdAt }));
   }
 
   // ---------- student: own request ----------
@@ -228,7 +315,7 @@ export class ClaimsService implements OnModuleInit {
 
   /** Sections this reviewer may approve for: teachers → sections they teach; admins → whole school. */
   private async scope(reviewer: Reviewer) {
-    if (reviewer.role === 'ADMIN') return { schoolId: reviewer.schoolId ?? '' };
+    if (reviewer.role === 'PRINCIPAL') return { schoolId: reviewer.schoolId ?? '' };
     const sections = await this.prisma.teachingAssignment.findMany({ where: { teacherId: reviewer.id }, select: { sectionId: true } });
     return { sectionId: { in: [...new Set(sections.map((s) => s.sectionId))] } };
   }

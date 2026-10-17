@@ -43,7 +43,7 @@ export default function Requests() {
     <Screen onRefresh={() => q.refetch()} refreshing={q.isRefetching}>
       <PageHeader
         title="Join requests"
-        subtitle={role === 'ADMIN' ? 'Sign-ups whose details did not exactly match the school list. Link each one to the right student.' : 'Students whose details did not exactly match your class list. Link each account to the right student — no duplicates.'}
+        subtitle={role === 'PRINCIPAL' ? 'Sign-ups whose details did not exactly match the school list. Link each one to the right student.' : 'Students whose details did not exactly match your class list. Link each account to the right student — no duplicates.'}
       />
       {q.isLoading ? <Loading /> : null}
       {q.error ? <ErrorView error={q.error} onRetry={() => q.refetch()} /> : null}

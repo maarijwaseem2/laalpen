@@ -1,7 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import type { Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { api, bootApp, photo, startFakeAi, waitFor } from './helpers.js';
+import { addTeacher, api, bootApp, loginStaff, newSchool, photo, startFakeAi, waitFor } from './helpers.js';
 import type { MailService } from '../src/mail/mail.service.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 
@@ -37,9 +37,7 @@ describe('School flow: admin → teacher → student', () => {
   beforeAll(async () => {
     ai = await startFakeAi();
     ({ app, mail, prisma } = await bootApp());
-    await api(app).post('/api/auth/register').send({ schoolName: 'Flow School', name: 'Admin', email: 'admin@flow.test', password: 'Secret-Mango-42' });
-    await prisma.user.update({ where: { email: 'admin@flow.test' }, data: { emailVerified: true } });
-    Object.assign(admin, await login('admin@flow.test', 'Secret-Mango-42'));
+    Object.assign(admin, (await newSchool(app, prisma, mail, { schoolName: 'Flow School', email: 'admin@flow.test' })).auth);
   });
   afterAll(async () => {
     await app.close();
@@ -60,11 +58,11 @@ describe('School flow: admin → teacher → student', () => {
     ids.mth = mth.body.id;
   });
 
-  it('admin adds a teacher (credentials emailed) and assigns two subjects in the same section', async () => {
-    const t = await as(admin).post('/api/admin/teachers', { name: 'Sana Mirza', email: 'sana@flow.test', password: 'Teacher-Mango-42' });
-    expect(t.status).toBe(201);
-    ids.teacher = t.body.id;
-    expect(passwordFromEmail('sana@flow.test').subject).toMatch(/Flow School/);
+  it('principal adds a teacher (invite emailed, no password) and assigns two subjects in the same section', async () => {
+    const t = await addTeacher(app, prisma, mail, admin, { name: 'Sana Mirza', email: 'sana@flow.test' });
+    ids.teacher = t.id;
+    expect(mail.outbox.some((m) => m.to === 'sana@flow.test' && /Flow School/.test(m.subject))).toBe(true);
+    expect(mail.outbox.some((m) => m.to === 'sana@flow.test' && /password/i.test(m.subject))).toBe(false);
 
     const a1 = await as(admin).post('/api/admin/assignments', { teacherId: ids.teacher, sectionId: ids.sec9A, subjectId: ids.phy });
     const a2 = await as(admin).post('/api/admin/assignments', { teacherId: ids.teacher, sectionId: ids.sec9A, subjectId: ids.mth });
@@ -91,7 +89,7 @@ describe('School flow: admin → teacher → student', () => {
   });
 
   it('roles are enforced', async () => {
-    teacherAuth = await login('sana@flow.test', 'Teacher-Mango-42');
+    teacherAuth = await loginStaff(app, prisma, mail, 'sana@flow.test');
     studentAuth = await login('ali@flow.test', 'Student-Mango-42');
     otherStudentAuth = await login('omar@flow.test', 'Student-Mango-42');
     await as(teacherAuth).get('/api/admin/dashboard').expect(403);
@@ -248,6 +246,9 @@ describe('School flow: admin → teacher → student', () => {
     await as(admin).del(`/api/admin/assignments/${ids.phy9A}`).expect(400);
     await as(admin).del(`/api/admin/sections/${ids.sec9A}`).expect(400);
     await as(admin).patch(`/api/admin/teachers/${ids.teacher}`, { isActive: false }).expect(200);
-    await api(app).post('/api/auth/login').send({ email: 'sana@flow.test', password: 'Teacher-Mango-42' }).expect(403);
+    await prisma.emailOtp.updateMany({ where: { email: 'sana@flow.test' }, data: { createdAt: new Date(Date.now() - 60_000) } });
+    const before = mail.outbox.length;
+    await api(app).post('/api/auth/email-code/start').send({ email: 'sana@flow.test' }).expect(200); // same answer, but no code for a disabled account
+    expect(mail.outbox.length).toBe(before);
   });
 });

@@ -1,18 +1,19 @@
-import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Req, Res } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, Patch, Post, Query, Req, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiExcludeEndpoint, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
-import { AllowWithoutMfa, CurrentUser, Public, type AuthUser } from '../common/decorators.js';
+import { AllowSetup, AllowWithoutMfa, CurrentUser, Public, type AuthUser } from '../common/decorators.js';
 import { AuthService } from './auth.service.js';
 import { SecurityService } from './security.service.js';
 import {
-  ChangePasswordDto, ForgotPasswordDto, GoogleLoginDto, LoginDto, RefreshDto, RegisterSchoolDto,
+  ChangePasswordDto, EmailCodeStartDto, EmailCodeVerifyDto, ForgotPasswordDto, GoogleLoginDto, LoginDto, RefreshDto, RegisterParentDto,
   ResendOtpDto, ResetPasswordDto, StepUpDto, TotpCodeDto, UpdateMeDto, VerifyEmailWithDeviceDto, VerifyLoginDto,
 } from './auth.dto.js';
 
 const ip = (req: Request) => (req.ips?.length ? req.ips[0] : req.ip) ?? undefined;
 
 @ApiTags('auth')
+@AllowSetup()
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -20,10 +21,32 @@ export class AuthController {
     private readonly security: SecurityService,
   ) {}
 
-  @Public() @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  /** Schools are created only by the LaalPen super admin now (older apps called this to register a school). */
+  @Public() @HttpCode(403) @ApiExcludeEndpoint()
   @Post('register')
-  register(@Body() dto: RegisterSchoolDto) {
-    return this.auth.registerSchool(dto);
+  register() {
+    throw new ForbiddenException({ message: 'Schools are added by LaalPen. Parents and students: use “Create account”. Principals: ask LaalPen to add your school.', code: 'SCHOOL_SIGNUP_CLOSED' });
+  }
+
+  /** The only public sign-up: a Parent / Student account (email verified with a code before use). */
+  @Public() @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('signup')
+  signup(@Body() dto: RegisterParentDto) {
+    return this.auth.registerParent(dto);
+  }
+
+  /** Staff sign-in step 1: email a one-time code (no passwords for staff). */
+  @Public() @HttpCode(200) @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('email-code/start')
+  emailCodeStart(@Body() dto: EmailCodeStartDto) {
+    return this.auth.emailCodeStart(dto.email);
+  }
+
+  /** Staff sign-in step 2: the code (or the link) from that email. */
+  @Public() @HttpCode(200) @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('email-code/verify')
+  emailCodeVerify(@Body() dto: EmailCodeVerifyDto, @Req() req: Request) {
+    return this.auth.emailCodeVerify(dto.email, dto.code, { deviceId: dto.deviceId, deviceName: dto.deviceName, ip: ip(req) });
   }
 
   @Public() @HttpCode(200) @Throttle({ default: { limit: 10, ttl: 60_000 } })
@@ -41,7 +64,8 @@ export class AuthController {
   @Public() @HttpCode(200) @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('login')
   login(@Body() dto: LoginDto, @Req() req: Request) {
-    return this.auth.login(dto.email, dto.password, { deviceId: dto.deviceId, deviceName: dto.deviceName, ip: ip(req) });
+    if (!dto.email && !dto.phone) throw new BadRequestException('Enter your email or mobile number');
+    return this.auth.login({ email: dto.email, phone: dto.phone }, dto.password, { deviceId: dto.deviceId, deviceName: dto.deviceName, ip: ip(req) });
   }
 
   /** Second step: authenticator / backup code, or the emailed code for a new device. */
@@ -54,7 +78,7 @@ export class AuthController {
   @Public() @HttpCode(200) @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('google')
   google(@Body() dto: GoogleLoginDto, @Req() req: Request) {
-    return this.auth.googleLogin(dto.idToken, { deviceId: dto.deviceId, deviceName: dto.deviceName, ip: ip(req) });
+    return this.auth.googleLogin(dto.idToken, { deviceId: dto.deviceId, deviceName: dto.deviceName, ip: ip(req) }, !!dto.signup);
   }
 
   @Public() @HttpCode(200) @Throttle({ default: { limit: 5, ttl: 60_000 } })
@@ -114,6 +138,13 @@ export class AuthController {
   @Post('step-up')
   stepUp(@CurrentUser() u: AuthUser, @Body() dto: StepUpDto) {
     return this.auth.stepUp(u.id, u.sid, dto);
+  }
+
+  /** Staff: email a code that confirms a sensitive action (they have no password to re-enter). */
+  @ApiBearerAuth() @HttpCode(200) @AllowWithoutMfa() @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('step-up/email')
+  stepUpEmail(@CurrentUser() u: AuthUser) {
+    return this.auth.stepUpEmailStart(u.id);
   }
 
   /** Devices where this account is signed in right now. */

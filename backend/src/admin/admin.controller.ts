@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles, StepUp, type AuthUser } from '../common/decorators.js';
 import { AdminService } from './admin.service.js';
@@ -10,7 +10,7 @@ import {
 
 @ApiTags('admin')
 @ApiBearerAuth()
-@Roles('ADMIN')
+@Roles('PRINCIPAL')
 @Controller('admin')
 export class AdminController {
   constructor(
@@ -39,7 +39,8 @@ export class AdminController {
   @Delete('subjects/:id') deleteSubject(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.svc.deleteSubject(u.schoolId, id); }
 
   @Get('teachers') teachers(@CurrentUser() u: AuthUser, @Query('search') search?: string) { return this.svc.listTeachers(u.schoolId, search); }
-  @Post('teachers') createTeacher(@CurrentUser() u: AuthUser, @Body() dto: CreateTeacherDto) { return this.svc.createTeacher(u.schoolId, dto); }
+  @Post('teachers') createTeacher(@CurrentUser() u: AuthUser, @Body() dto: CreateTeacherDto) { return this.svc.createTeacher(u.schoolId, dto, u); }
+  @HttpCode(200) @Post('teachers/:id/resend-invite') resendInvite(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.svc.resendTeacherInvite(u.schoolId, id, u); }
   @Patch('teachers/:id') updateTeacher(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: UpdateTeacherDto) { return this.svc.updateTeacher(u.schoolId, id, dto); }
   @StepUp() @Delete('teachers/:id') deleteTeacher(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.svc.deleteTeacher(u.schoolId, id); }
 

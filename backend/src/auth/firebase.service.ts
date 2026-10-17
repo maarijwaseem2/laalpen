@@ -12,6 +12,7 @@ export class FirebaseService {
   private readonly log = new Logger('Firebase');
 
   async verifyGoogleToken(idToken: string): Promise<{ email: string; uid: string; name?: string }> {
+    if (env.isTest && idToken.startsWith('test-google-unverified:')) throw new UnauthorizedException('Google sign-in failed, please try again');
     if (env.isTest && idToken.startsWith('test-google:')) {
       const email = idToken.slice('test-google:'.length);
       return { email, uid: `uid-${email}` };

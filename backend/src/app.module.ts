@@ -21,6 +21,8 @@ import { CaptureModule } from './capture/capture.module.js';
 import { ScanModule } from './scan/scan.module.js';
 import { InsightsModule } from './insights/insights.module.js';
 import { ShareModule } from './share/share.module.js';
+import { PlatformModule } from './platform/platform.module.js';
+import { SchoolModule } from './school/school.module.js';
 import { HealthController } from './health/health.controller.js';
 import { KeepAliveService } from './health/keepalive.service.js';
 import { AuthGuard } from './common/auth.guard.js';
@@ -49,6 +51,8 @@ import { env } from './config/env.js';
     ScanModule,
     InsightsModule,
     ShareModule,
+    PlatformModule,
+    SchoolModule,
   ],
   controllers: [HealthController],
   providers: [

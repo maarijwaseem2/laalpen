@@ -83,7 +83,7 @@ export class SecurityService {
   }
 
   async disableTotp(userId: string, code: string, role: string) {
-    if (role === 'ADMIN' && env.requireAdmin2fa) throw new ForbiddenException('Principals and admins must keep the authenticator app on');
+    if (role === 'PRINCIPAL' && env.requireAdmin2fa) throw new ForbiddenException('Principals and admins must keep the authenticator app on');
     if (!(await this.checkTotp(userId, code)) && !(await this.useBackupCode(userId, code))) throw new BadRequestException('That code is not right');
     const user = await this.prisma.user.update({ where: { id: userId }, data: { totpEnabledAt: null, totpSecretEnc: null } });
     await this.prisma.backupCode.deleteMany({ where: { userId } });
@@ -171,7 +171,7 @@ export class SecurityService {
         user.email,
         user.name,
         'New sign-in to your account',
-        [`A new device signed in${device.deviceName ? ` (${device.deviceName})` : ''} with ${method === 'google' ? 'Google' : 'your password'}${device.ip ? ` from IP ${device.ip}` : ''}.`],
+        [`A new device signed in${device.deviceName ? ` (${device.deviceName})` : ''} with ${method === 'google' ? 'Google' : method === 'email' ? 'a code sent to your email' : method === 'passkey' ? 'a passkey' : 'your password'}${device.ip ? ` from IP ${device.ip}` : ''}.`],
         this.panicUrl(userId),
       );
     }

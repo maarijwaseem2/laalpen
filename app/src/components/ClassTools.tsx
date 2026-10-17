@@ -16,9 +16,9 @@ import { queryClient } from '@/lib/query';
  * Getting a class onto LaalPen: the class code students type, printed claim cards,
  * and quick-add for academies that have no register file.
  */
-export function ClassTools({ sectionId, role, joinCode, expiresAt }: { sectionId: string; role: 'ADMIN' | 'TEACHER'; joinCode?: string | null; expiresAt?: string | null }) {
+export function ClassTools({ sectionId, role, joinCode, expiresAt }: { sectionId: string; role: 'PRINCIPAL' | 'TEACHER'; joinCode?: string | null; expiresAt?: string | null }) {
   const t = useAppTheme();
-  const base = role === 'ADMIN' ? '/admin' : '/teacher';
+  const base = role === 'PRINCIPAL' ? '/admin' : '/teacher';
   const code = useQuery({
     queryKey: ['join-code', sectionId],
     queryFn: () => (role === 'TEACHER' ? api.get<{ joinCode: string; joinCodeExpiresAt: string }>(`/teacher/sections/${sectionId}/join-code`) : Promise.resolve({ joinCode: joinCode ?? '', joinCodeExpiresAt: expiresAt ?? '' })),

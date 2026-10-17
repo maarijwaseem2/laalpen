@@ -74,7 +74,7 @@ export default function AdminSection() {
       <PageHeader back title={d ? `${d.className} — Section ${d.name}` : 'Section'} subtitle={d ? `${d.students.length} students, ${d.subjects.length} subjects` : undefined} />
       {q.isLoading ? <Loading /> : null}
       {q.error ? <ErrorView error={q.error} onRetry={() => q.refetch()} /> : null}
-      {d ? <ClassTools key={d.joinCode ?? 'none'} sectionId={d.id} role="ADMIN" joinCode={d.joinCode} expiresAt={d.joinCodeExpiresAt} /> : null}
+      {d ? <ClassTools key={d.joinCode ?? 'none'} sectionId={d.id} role="PRINCIPAL" joinCode={d.joinCode} expiresAt={d.joinCodeExpiresAt} /> : null}
       {d ? (wide ? <View style={{ flexDirection: 'row', gap: 24, alignItems: 'flex-start' }}>{studentsBlock}{subjectsBlock}</View> : <>{subjectsBlock}{studentsBlock}</>) : null}
       <FormDialog
         visible={assign.visible}

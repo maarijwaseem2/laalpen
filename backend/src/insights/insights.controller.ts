@@ -5,7 +5,7 @@ import { InsightsService } from './insights.service.js';
 
 @ApiTags('admin-insights')
 @ApiBearerAuth()
-@Roles('ADMIN')
+@Roles('PRINCIPAL')
 @Controller('admin')
 export class InsightsController {
   constructor(private readonly svc: InsightsService) {}

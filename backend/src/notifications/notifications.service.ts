@@ -45,7 +45,7 @@ export class NotificationsService {
   async notifySectionReviewers(sectionId: string, msg: { title: string; body: string }) {
     const section = await this.prisma.section.findUnique({ where: { id: sectionId }, include: { schoolClass: true, teaching: true } });
     if (!section) return;
-    const admins = await this.prisma.user.findMany({ where: { schoolId: section.schoolClass.schoolId, role: 'ADMIN', isActive: true }, select: { id: true } });
+    const admins = await this.prisma.user.findMany({ where: { schoolId: section.schoolClass.schoolId, role: 'PRINCIPAL', isActive: true }, select: { id: true } });
     await this.notify([...section.teaching.map((t) => t.teacherId), ...admins.map((a) => a.id)], {
       type: 'ACCOUNT',
       title: msg.title,

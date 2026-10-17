@@ -1,7 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import type { Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { api, bootApp, photo, startFakeAi } from './helpers.js';
+import { addTeacher, api, bootApp, newSchool, photo, startFakeAi } from './helpers.js';
 import { AiClient } from '../src/checking/ai-client.js';
 import { CheckingService } from '../src/checking/checking.service.js';
 import type { MailService } from '../src/mail/mail.service.js';
@@ -26,18 +26,16 @@ describe('Safety fixes', () => {
   beforeAll(async () => {
     ai = await startFakeAi(18765);
     ({ app, mail, prisma } = await bootApp());
-    await api(app).post('/api/auth/register').send({ schoolName: 'Safe School', name: 'Admin', email: 'admin@safe.test', password: 'Secret-Mango-42' });
-    await prisma.user.update({ where: { email: 'admin@safe.test' }, data: { emailVerified: true } });
-    admin = await login('admin@safe.test', 'Secret-Mango-42');
+    ({ auth: admin } = await newSchool(app, prisma, mail, { schoolName: 'Safe School', email: 'admin@safe.test' }));
     const c = await api(app).post('/api/admin/classes').set(admin).send({ name: 'Class 8', grade: 8, sections: ['A'] });
     ids.sec = c.body.sections[0].id;
     const sub = await api(app).post('/api/admin/subjects').set(admin).send({ name: 'Maths' });
-    const t = await api(app).post('/api/admin/teachers').set(admin).send({ name: 'Tariq Teacher', email: 't@safe.test', password: 'Teacher-Mango-42' });
-    ids.teacher = t.body.id;
-    const a = await api(app).post('/api/admin/assignments').set(admin).send({ teacherId: t.body.id, sectionId: ids.sec, subjectId: sub.body.id });
+    const t = await addTeacher(app, prisma, mail, admin, { name: 'Tariq Teacher', email: 't@safe.test' });
+    ids.teacher = t.id;
+    const a = await api(app).post('/api/admin/assignments').set(admin).send({ teacherId: t.id, sectionId: ids.sec, subjectId: sub.body.id });
     const s = await api(app).post('/api/admin/students').set(admin).send({ name: 'Kid One', email: 'kid@safe.test', sectionId: ids.sec, rollNo: '1', guardianEmail: 'parent@safe.test', password: 'Student-Mango-42' });
     ids.student = s.body.userId;
-    teacher = await login('t@safe.test', 'Teacher-Mango-42');
+    teacher = t.auth;
     const test = await api(app).post(`/api/teacher/assignments/${a.body.id}/tests`).set(teacher).send({ title: 'Quiz', confirmKey: true, questions: [{ number: 1, text: '2+2', maxMarks: 2, answerKey: '4' }] });
     ids.test = test.body.id;
     ids.profile = (await prisma.studentProfile.findFirstOrThrow({ where: { userId: s.body.userId } })).id;
@@ -97,17 +95,17 @@ describe('Safety fixes', () => {
   });
 
   it('Google sign-in on an account someone else registered (unverified) removes their password', async () => {
-    await api(app).post('/api/auth/register').send({ schoolName: 'Squatter School', name: 'Not Owner', email: 'owner@victim.test', password: 'Attacker-Mango-42' }).expect(201);
+    await api(app).post('/api/auth/signup').send({ name: 'Not Owner', email: 'owner@victim.test', password: 'Attacker-Mango-42' }).expect(201);
     const g = await api(app).post('/api/auth/google').send({ idToken: 'test-google:owner@victim.test' });
     expect(g.status).toBe(200);
     await api(app).post('/api/auth/login').send({ email: 'owner@victim.test', password: 'Attacker-Mango-42' }).expect(401);
   });
 
   it('an unverified sign-up stops blocking the email once its code has expired', async () => {
-    await api(app).post('/api/auth/register').send({ schoolName: 'Typo School', name: 'X Y', email: 'later@safe.test', password: 'Secret-Mango-42' }).expect(201);
+    await api(app).post('/api/auth/signup').send({ name: 'Typo Person', email: 'later@safe.test', password: 'Secret-Mango-42' }).expect(201);
     await prisma.user.update({ where: { email: 'later@safe.test' }, data: { createdAt: new Date(Date.now() - 60 * 60_000) } });
-    await api(app).post('/api/auth/register').send({ schoolName: 'Real School', name: 'Real Owner', email: 'later@safe.test', password: 'Secret-Mango-42' }).expect(201);
-    expect(await prisma.school.count({ where: { name: 'Typo School' } })).toBe(0);
+    await api(app).post('/api/auth/signup').send({ name: 'Real Owner', email: 'later@safe.test', password: 'Secret-Mango-42' }).expect(201);
+    expect(await prisma.user.count({ where: { name: 'Typo Person' } })).toBe(0);
   });
 
   it('wrong codes guessed in parallel still count toward the 5-try limit', async () => {

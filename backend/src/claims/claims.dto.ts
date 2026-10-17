@@ -39,3 +39,12 @@ export class ApproveClaimDto {
 export class RejectDto {
   @trim() @IsOptional() @IsString() @MaxLength(300) reason?: string;
 }
+
+/** Family account: one code box. Card code alone links; a class / school code also needs the child's name and roll. */
+export class FamilyLinkDto {
+  @trim() @IsString() @MinLength(4) @MaxLength(30) code: string;
+  @trim() @IsOptional() @IsString() @MinLength(2) @MaxLength(80) childName?: string;
+  @trim() @IsOptional() @IsString() @MinLength(1) @MaxLength(20) rollNo?: string;
+  @IsOptional() @IsDateString() dob?: string;
+  @IsOptional() @IsString() sectionId?: string;
+}

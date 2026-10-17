@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { IsEmail, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
 import type { Request } from 'express';
-import { AllowWithoutMfa, CurrentUser, Public, type AuthUser } from '../common/decorators.js';
+import { AllowSetup, AllowWithoutMfa, CurrentUser, Public, type AuthUser } from '../common/decorators.js';
 import { PasskeysService } from './passkeys.service.js';
 
 class VerifyDto {
@@ -18,6 +18,7 @@ class OptionsDto {
 }
 
 @ApiTags('passkeys')
+@AllowSetup()
 @Controller('auth/passkeys')
 export class PasskeysController {
   constructor(private readonly svc: PasskeysService) {}

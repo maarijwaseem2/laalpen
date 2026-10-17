@@ -53,7 +53,7 @@ export class MailService {
     }
   }
 
-  sendOtp(to: string, name: string, code: string, purpose: 'verify' | 'reset' | 'device') {
+  sendOtp(to: string, name: string, code: string, purpose: 'verify' | 'reset' | 'device', link?: string) {
     const verify = purpose === 'verify';
     if (purpose === 'device') {
       return this.send({
@@ -83,6 +83,45 @@ export class MailService {
         `The code expires in ${env.otpTtlMinutes} minutes. If you did not request it, you can ignore this email.`,
       ],
       code,
+      button: verify && link ? { label: 'Verify my email', url: link } : undefined,
+    });
+  }
+
+  /** Staff sign-in: a one-time code plus a link that signs in on the device that opens it. */
+  loginCode(to: string, name: string, code: string, link: string, purpose: 'login' | 'step-up' = 'login') {
+    const login = purpose === 'login';
+    return this.send({
+      to,
+      toName: name,
+      subject: login ? `${code} is your LaalPen sign-in code` : `${code} confirms your LaalPen action`,
+      heading: login ? 'Your sign-in code' : 'Confirm it is you',
+      paragraphs: [
+        `Assalam o Alaikum ${name},`,
+        login ? 'Type this code on the LaalPen sign-in screen, or tap the button below on the same phone or computer.' : 'Type this code in LaalPen to confirm the action you started.',
+        `It works once and expires in ${env.otpTtlMinutes} minutes. LaalPen staff never ask for this code: do not share it.`,
+        'If you did not try to sign in, ignore this email. Your account is safe.',
+      ],
+      code,
+      button: login ? { label: 'Sign in to LaalPen', url: link } : undefined,
+    });
+  }
+
+  /** Invite for a principal (from the super admin) or a teacher (from the principal). */
+  invite(to: string, name: string, role: 'PRINCIPAL' | 'TEACHER', schoolName: string, invitedBy: string, link: string) {
+    const principal = role === 'PRINCIPAL';
+    return this.send({
+      to,
+      toName: name,
+      subject: principal ? `You are the principal of ${schoolName} on LaalPen` : `${schoolName} added you as a teacher on LaalPen`,
+      heading: principal ? 'Welcome, Principal' : 'Welcome to your school on LaalPen',
+      paragraphs: [
+        `Assalam o Alaikum ${name},`,
+        principal
+          ? `${invitedBy} added you as the principal of ${schoolName}. First complete your school profile (address, phone, classes and sections), then add your teachers.`
+          : `${invitedBy} added you as a teacher at ${schoolName}. First complete your profile (qualification, subjects and the classes you teach). Your principal approves it, then your classes open.`,
+        `Sign in with this email address (${to}). There is no password: LaalPen emails you a one-time code each time, or you can use Google with this same email, or a passkey after your first sign-in.`,
+      ],
+      button: { label: 'Open LaalPen', url: link },
     });
   }
 
@@ -105,7 +144,7 @@ export class MailService {
       ? `<div style="margin:22px 0;padding:16px;border-radius:12px;background:#fdf1f0;text-align:center;font-size:32px;letter-spacing:10px;font-weight:700;color:#b3261e;font-family:monospace">${m.code}</div>`
       : '';
     const button = m.button
-      ? `<a href="${m.button.url}" style="display:inline-block;margin-top:8px;padding:12px 22px;border-radius:999px;background:#b3261e;color:#fff;text-decoration:none;font-weight:600">${esc(m.button.label)}</a>`
+      ? `<a href="${esc(m.button.url)}" style="display:inline-block;margin-top:8px;padding:12px 22px;border-radius:999px;background:#b3261e;color:#fff;text-decoration:none;font-weight:600">${esc(m.button.label)}</a>`
       : '';
     return `<!doctype html><html><body style="margin:0;background:#f6f3ef;font-family:Segoe UI,Arial,sans-serif">
 <div style="max-width:520px;margin:0 auto;padding:32px 16px">

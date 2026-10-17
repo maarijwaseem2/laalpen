@@ -27,7 +27,7 @@ async function cardsFor(prisma: PrismaService, roster: RosterService, cards: Car
 
 @ApiTags('admin-roster')
 @ApiBearerAuth()
-@Roles('ADMIN')
+@Roles('PRINCIPAL')
 @Controller('admin')
 export class AdminRosterController {
   constructor(

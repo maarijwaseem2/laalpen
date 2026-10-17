@@ -1,19 +1,24 @@
 /**
  * Seeds the database. Safe to run any number of times (everything is upserted).
  *
- *   npm run db:seed            -> demo school with admin, teachers, students, tests and checked copies
+ *   npm run db:seed            -> demo school with principal, teachers, students, tests and checked copies
  *   SEED_DEMO=false npm run db:seed  -> nothing demo (production)
+ *   SUPER_ADMIN_EMAIL=you@x.com -> that email becomes the LaalPen super admin (signs in with an emailed code;
+ *                                  runs even with SEED_DEMO=false; an existing account with another role is never changed)
  *
- * Demo logins (password for all: Demo@1234)
- *   admin@laalpen.demo           Admin
+ * Demo logins
+ *   Staff sign in with an emailed code (no passwords). @laalpen.demo cannot receive email, so for these demo
+ *   addresses the code is shown on the screen (DEMO_LOGIN_DOMAINS):
+ *   admin@laalpen.demo           Principal
  *   sana.teacher@laalpen.demo    Teacher (Physics 9-A, 9-B, Maths 9-A)
  *   imran.teacher@laalpen.demo   Teacher (Chemistry 9-A, 9-B, Physics 10-A, English 10-A)
- *   ali.raza@laalpen.demo        Student (9-A)
+ *   Parent / Student (password Demo@1234):
+ *   parent@laalpen.demo          Family account with Ali Raza (9-A) and his brother Danish Raza (10-A)
+ *   ali.raza@laalpen.demo        Older student account (9-A), still works
  *   saad.pending@laalpen.demo    Student who signed up; the teacher still has to link him to the roster
- *   Parent: phone 0300 1112233   (Ali Raza 9-A + his brother Danish Raza 10-A). The code is printed in
- *                                the backend terminal when SMS/WhatsApp keys are not set.
+ *   Parent phone 0300 1112233    (old SMS-code login for parents the school added by phone)
  *
- * Class codes (students type one when they sign up): ALN-9A, ALN-9B, ALN-10A  (school code: ALN-2026)
+ * Class codes (typed in the parent's "Add child" box): ALN-9A, ALN-9B, ALN-10A  (school code: ALN-2026)
  * Class 10-A students are on the roster only (no app accounts) — like most real schools on day one.
  */
 import 'dotenv/config';
@@ -61,12 +66,27 @@ const dobFor = (section: string, roll: string) => {
 
 const slug = (name: string) => name.toLowerCase().replace(/[^a-z]+/g, '.').replace(/^\.|\.$/g, '');
 
-async function user(schoolId: string, email: string, name: string, role: 'ADMIN' | 'TEACHER' | 'STUDENT', hash: string) {
+async function user(schoolId: string, email: string, name: string, role: 'PRINCIPAL' | 'TEACHER' | 'STUDENT', hash: string) {
+  // staff never have a password (they sign in with an emailed code; demo staff see the code on screen)
+  const staff = role !== 'STUDENT';
   return prisma.user.upsert({
     where: { email },
-    update: { name, role, schoolId },
-    create: { email, name, role, schoolId, passwordHash: hash, emailVerified: true },
+    update: { name, role, schoolId, ...(staff ? { passwordHash: null } : {}) },
+    create: { email, name, role, schoolId, passwordHash: staff ? null : hash, emailVerified: true },
   });
+}
+
+/** The LaalPen platform owner. Created once from SUPER_ADMIN_EMAIL; an existing account with another role is never changed. */
+async function superAdmin() {
+  const email = (process.env.SUPER_ADMIN_EMAIL || '').trim().toLowerCase();
+  if (!email) return;
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (!existing) {
+    await prisma.user.create({ data: { email, name: process.env.SUPER_ADMIN_NAME || 'LaalPen Admin', role: 'SUPER_ADMIN', emailVerified: true } });
+    console.log('Super admin account created (signs in with an emailed code).');
+  } else if (existing.role !== 'SUPER_ADMIN') {
+    console.warn(`SUPER_ADMIN_EMAIL already belongs to a ${existing.role} account; it was not changed.`);
+  }
 }
 
 /** STORAGE_DRIVER=db keeps file bytes in PostgreSQL (hosts whose disk is wiped on restart, e.g. Render free). */
@@ -97,7 +117,10 @@ async function demo() {
   if (school.joinCode !== 'ALN-2026' && !(await prisma.school.findUnique({ where: { joinCode: 'ALN-2026' } }))) {
     school.joinCode = (await prisma.school.update({ where: { id: school.id }, data: { joinCode: 'ALN-2026' } })).joinCode;
   }
-  await user(school.id, 'admin@laalpen.demo', 'Rabia Siddiqui', 'ADMIN', hash);
+  await user(school.id, 'admin@laalpen.demo', 'Rabia Siddiqui', 'PRINCIPAL', hash);
+  if (!school.profileCompletedAt || !school.address) {
+    await prisma.school.update({ where: { id: school.id }, data: { profileCompletedAt: school.profileCompletedAt ?? new Date(), address: school.address ?? 'Block 7, Gulshan-e-Iqbal', phone: school.phone ?? '021 34567890' } });
+  }
 
   // classes & sections
   const sections: Record<string, string> = {};
@@ -132,6 +155,12 @@ async function demo() {
       create: { teacherId: teacher.id, sectionId: sections[section], subjectId: subjects[subject] },
     });
     assignments[`${subject}-${section}`] = a.id;
+  }
+  // demo teachers are already approved by the principal
+  for (const [t, qualification] of [[sana, 'MSc Physics, B.Ed'], [imran, 'MSc Chemistry']] as const) {
+    const teaching = await prisma.teachingAssignment.findMany({ where: { teacherId: t.id }, include: { subject: true } });
+    const data = { schoolId: school.id, qualification, phone: '0300 1234567', subjects: [...new Set(teaching.map((x) => x.subject.name))], sections: teaching.map((x) => ({ sectionId: x.sectionId, subject: x.subject.name })), status: 'APPROVED' as const, submittedAt: new Date(), reviewedAt: new Date() };
+    await prisma.teacherProfile.upsert({ where: { userId: t.id }, update: { status: 'APPROVED' }, create: { userId: t.id, ...data } });
   }
 
   // academic session (April–March) — tests and enrollments belong to it
@@ -340,11 +369,21 @@ async function demo() {
     await prisma.notification.create({ data: { userId: sana.id, type: 'CHECKING', title: 'Checking finished: Weekly Quiz — Speed & Velocity', body: 'Class 9 A — 1 ready to approve, 1 need your review.', data: { testId: t2.test.id } } });
   }
 
+  // one Parent / Student (family) account with a password: Ali Raza (9-A) and his brother Danish Raza (10-A)
+  const family =
+    (await prisma.user.findUnique({ where: { email: 'parent@laalpen.demo' } })) ??
+    (await prisma.user.create({ data: { email: 'parent@laalpen.demo', name: 'Raza Ahmed', role: 'PARENT', passwordHash: hash, emailVerified: true, schoolId: school.id } }));
+  const fg = await prisma.guardian.upsert({ where: { schoolId_phone: { schoolId: school.id, phone: `acct:${family.id}` } }, update: { userId: family.id }, create: { schoolId: school.id, phone: `acct:${family.id}`, name: family.name, userId: family.id } });
+  for (const key of ['9-A-03', '10-A-03']) {
+    await prisma.studentGuardian.upsert({ where: { studentId_guardianId: { studentId: profiles[key], guardianId: fg.id } }, update: {}, create: { studentId: profiles[key], guardianId: fg.id, relation: 'family-account' } });
+  }
+
   console.log(`Demo school ready: ${school.name} — session ${session.name}, class codes ALN-9A / ALN-9B / ALN-10A.`);
-  console.log(`Log in with admin@laalpen.demo / ${PASSWORD}  (parent demo: phone 0300 1112233)`);
+  console.log(`Staff demo: admin@laalpen.demo (principal), sana.teacher@laalpen.demo — sign-in code shown on screen. Family demo: parent@laalpen.demo / ${PASSWORD}`);
 }
 
 async function main() {
+  await superAdmin();
   if ((process.env.SEED_DEMO ?? 'true') !== 'false') await demo();
   else console.log('SEED_DEMO=false — nothing to seed.');
 }

@@ -915,7 +915,7 @@ export class TeacherService {
     await this.prisma.submission.update({ where: { id: submissionId }, data: { status: 'CHECKED', approvedAt: null, notifiedAt: null } });
     await this.bumpStats(submissionId, -1);
     await this.audit.record({ schoolId: s.schoolId, actorId: teacher.id, actorRole: 'TEACHER', action: 'copy.reopen', entity: 'submission', entityId: submissionId, reason, ip: teacher.ip });
-    const admins = await this.prisma.user.findMany({ where: { schoolId: s.schoolId ?? undefined, role: 'ADMIN', isActive: true }, select: { id: true } });
+    const admins = await this.prisma.user.findMany({ where: { schoolId: s.schoolId ?? undefined, role: 'PRINCIPAL', isActive: true }, select: { id: true } });
     const info = await this.prisma.submission.findUniqueOrThrow({ where: { id: submissionId }, include: { student: true, test: { include: { assignment: { include: { teacher: { select: { name: true } } } } } } } });
     await this.notifications.notify(admins.map((a) => a.id), {
       type: 'INFO',

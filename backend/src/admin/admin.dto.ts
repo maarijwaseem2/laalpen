@@ -30,7 +30,6 @@ export class CreateTeacherDto {
   @trim() @IsString() @MinLength(2) @MaxLength(80) name: string;
   @lower() @IsEmail() email: string;
   @trim() @IsOptional() @IsString() @MaxLength(30) phone?: string;
-  @IsOptional() @IsString() @MinLength(8) password?: string;
 }
 export class UpdateTeacherDto {
   @trim() @IsOptional() @IsString() @MinLength(2) @MaxLength(80) name?: string;

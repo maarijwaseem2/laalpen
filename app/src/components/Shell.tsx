@@ -18,7 +18,10 @@ import { useT } from '@/lib/i18n';
 type Item = { href: string; label: string; icon: string; exact?: boolean; also?: string[] };
 
 export const NAV: Record<Role, Item[]> = {
-  ADMIN: [
+  SUPER_ADMIN: [
+    { href: '/platform', label: 'Schools', icon: 'domain', also: ['/platform/school'] },
+  ],
+  PRINCIPAL: [
     { href: '/admin', label: 'Dashboard', icon: 'view-dashboard-outline', exact: true },
     { href: '/admin/insights', label: 'Insights', icon: 'chart-box-outline' },
     { href: '/admin/classes', label: 'Classes', icon: 'google-classroom', also: ['/admin/sections'] },
@@ -28,6 +31,7 @@ export const NAV: Record<Role, Item[]> = {
     { href: '/admin/subjects', label: 'Subjects', icon: 'book-open-page-variant-outline' },
     { href: '/requests', label: 'Join requests', icon: 'account-clock-outline' },
     { href: '/admin/activity', label: 'Activity log', icon: 'history' },
+    { href: '/school-setup', label: 'School profile', icon: 'domain' },
   ],
   TEACHER: [
     { href: '/teacher', label: 'Home', icon: 'home-outline', exact: true },
@@ -63,7 +67,7 @@ export function Wordmark({ size = 30 }: { size?: number }) {
 
 function useRequestCount(enabled: boolean) {
   const role = useAuth((s) => s.user?.role);
-  const q = useQuery({ queryKey: ['requests', 'count'], queryFn: () => api.get<{ count: number }>('/requests/count'), enabled: enabled && (role === 'ADMIN' || role === 'TEACHER'), refetchInterval: 60_000 });
+  const q = useQuery({ queryKey: ['requests', 'count'], queryFn: () => api.get<{ count: number }>('/requests/count'), enabled: enabled && (role === 'PRINCIPAL' || role === 'TEACHER'), refetchInterval: 60_000 });
   return enabled ? (q.data?.count ?? 0) : 0;
 }
 
@@ -110,7 +114,7 @@ export function Shell({ children }: { children: ReactNode }) {
           <View style={{ paddingHorizontal: 20, paddingTop: 22, paddingBottom: 18 }}>
             <Wordmark size={34} />
             <Text variant="bodySmall" style={{ color: t.app.muted }} numberOfLines={2}>
-              {user.school?.name ?? 'Your school'}
+              {user.role === 'SUPER_ADMIN' ? 'All schools' : user.role === 'PARENT' ? 'Parent / Student' : user.school?.name ?? 'Your school'}
             </Text>
           </View>
           <View style={{ paddingHorizontal: 10, gap: 2 }}>
@@ -129,7 +133,7 @@ export function Shell({ children }: { children: ReactNode }) {
                 {user.name}
               </Text>
               <Text variant="bodySmall" style={{ color: t.app.muted }}>
-                {user.role === 'ADMIN' ? 'School admin' : user.role === 'TEACHER' ? 'Teacher' : user.role === 'PARENT' ? 'Parent' : `Student · ${user.student?.className ?? ''} ${user.student?.sectionName ?? ''}`}
+                {user.role === 'SUPER_ADMIN' ? 'LaalPen admin' : user.role === 'PRINCIPAL' ? 'Principal' : user.role === 'TEACHER' ? 'Teacher' : user.role === 'PARENT' ? 'Parent' : `Student · ${user.student?.className ?? ''} ${user.student?.sectionName ?? ''}`}
               </Text>
             </View>
           </Pressable>
@@ -155,7 +159,7 @@ export function Shell({ children }: { children: ReactNode }) {
         <View style={{ flex: 1, paddingLeft: 16 }}>
           <Wordmark size={28} />
         </View>
-        {user.role === 'PARENT' || user.role === 'STUDENT' ? <LangButton /> : null}
+        <LangButton />
         <ThemeButton />
         <Bell />
       </View>

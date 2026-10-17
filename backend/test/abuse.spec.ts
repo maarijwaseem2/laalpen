@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { api, bootApp } from './helpers.js';
+import { api, bootApp, lastCodeFor, newSchool } from './helpers.js';
+import type { MailService } from '../src/mail/mail.service.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { sniffImage } from '../src/common/image-type.js';
 
@@ -8,15 +9,16 @@ import { sniffImage } from '../src/common/image-type.js';
 describe('abuse protection', () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  let mail: MailService;
   let admin: Record<string, string>;
 
   beforeAll(async () => {
     process.env.CLIENT_IP_HEADER = 'cf-connecting-ip';
-    ({ app, prisma } = await bootApp());
-    await api(app).post('/api/auth/register').send({ schoolName: 'Abuse School', name: 'Admin', email: 'admin@abuse.test', password: 'Secret-Mango-42' });
-    await prisma.user.update({ where: { email: 'admin@abuse.test' }, data: { emailVerified: true } });
-    const r = await api(app).post('/api/auth/login').send({ email: 'admin@abuse.test', password: 'Secret-Mango-42' });
-    admin = { authorization: `Bearer ${r.body.accessToken}` };
+    ({ app, prisma, mail } = await bootApp());
+    ({ auth: admin } = await newSchool(app, prisma, mail, { schoolName: 'Abuse School', email: 'admin@abuse.test' }));
+    // a family (Parent / Student) account: the only kind that signs in with a password
+    await api(app).post('/api/auth/signup').send({ name: 'Family Abuse', email: 'family@abuse.test', password: 'Secret-Mango-42' }).expect(201);
+    await api(app).post('/api/auth/verify-email').send({ email: 'family@abuse.test', code: lastCodeFor(mail, 'family@abuse.test') }).expect(200);
   });
   afterAll(async () => {
     delete process.env.CLIENT_IP_HEADER;
@@ -42,13 +44,29 @@ describe('abuse protection', () => {
     }
   });
 
+  it('staff email codes are rate limited: the 6th request (start) or 11th guess (verify) in a minute gets 429', async () => {
+    process.env.THROTTLE_IN_TESTS = 'true';
+    try {
+      const starts: number[] = [];
+      for (let i = 0; i < 6; i++) starts.push((await api(app).post('/api/auth/email-code/start').set('cf-connecting-ip', '203.0.113.21').send({ email: 'staff@abuse.test' })).status);
+      expect(starts.slice(0, 5).every((s) => s === 200)).toBe(true);
+      expect(starts[5]).toBe(429);
+      const guesses: number[] = [];
+      for (let i = 0; i < 11; i++) guesses.push((await api(app).post('/api/auth/email-code/verify').set('cf-connecting-ip', '203.0.113.22').send({ email: 'staff@abuse.test', code: String(100000 + i) })).status);
+      expect(guesses.slice(0, 10).every((s) => s === 400)).toBe(true);
+      expect(guesses[10]).toBe(429);
+    } finally {
+      delete process.env.THROTTLE_IN_TESTS;
+    }
+  });
+
   it('the visitor IP from the CDN header is what the audit log records', async () => {
     for (let i = 0; i < 10; i++) {
-      await api(app).post('/api/auth/login').set('cf-connecting-ip', '203.0.113.50').send({ email: 'admin@abuse.test', password: 'Wrong-Pass-9' });
+      await api(app).post('/api/auth/login').set('cf-connecting-ip', '203.0.113.50').send({ email: 'family@abuse.test', password: 'Wrong-Pass-9' });
     }
     const locked = await prisma.auditLog.findFirst({ where: { action: 'account.locked' }, orderBy: { createdAt: 'desc' } });
     expect(locked?.ip).toBe('203.0.113.50');
-    await prisma.user.update({ where: { email: 'admin@abuse.test' }, data: { lockedUntil: null, failedLogins: 0 } });
+    await prisma.user.update({ where: { email: 'family@abuse.test' }, data: { lockedUntil: null, failedLogins: 0 } });
   });
 
   it('a create sent twice with the same Idempotency-Key runs once and the copy gets the same answer', async () => {

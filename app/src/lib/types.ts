@@ -1,4 +1,5 @@
-export type Role = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PARENT';
+export type Role = 'SUPER_ADMIN' | 'PRINCIPAL' | 'TEACHER' | 'STUDENT' | 'PARENT';
+export type TeacherStatus = 'PROFILE_INCOMPLETE' | 'PENDING' | 'APPROVED' | 'REJECTED';
 export type SubmissionStatus = 'PENDING' | 'PROCESSING' | 'CHECKED' | 'NEEDS_REVIEW' | 'APPROVED' | 'FAILED' | 'NEEDS_ATTENTION';
 export type ReviewState = 'SURE' | 'CHECK' | 'UNREADABLE';
 export type QuestionType = 'THEORY' | 'NUMERIC' | 'MCQ';
@@ -15,7 +16,17 @@ export interface User {
   twoFactor?: boolean;
   passkeys?: number;
   mfaSetupRequired?: boolean;
-  school: { id: string; name: string; city?: string | null; board?: string | null; joinCode?: string } | null;
+  /** principal, teacher or super admin: signs in with an emailed code / passkey / Google, never a password */
+  staff?: boolean;
+  usesPassword?: boolean;
+  hasPassword?: boolean;
+  passkeyBlocked?: boolean;
+  school: {
+    id: string; name: string; city?: string | null; board?: string | null; joinCode?: string;
+    address?: string | null; phone?: string | null; logoUrl?: string | null; profileComplete?: boolean; suspended?: boolean;
+  } | null;
+  /** a teacher's own profile approval */
+  teacher?: { status: TeacherStatus; rejectReason: string | null } | null;
   /** the roster student this account is linked to */
   student: { id: string; name?: string; rollNo: string; sectionId: string; sectionName?: string; className?: string; status: 'APPROVED' } | null;
   /** a student account that is not linked to the roster yet */

@@ -260,7 +260,7 @@ export class AdminService {
         ...(search ? { OR: [{ name: { contains: search, mode: 'insensitive' } }, { email: { contains: search, mode: 'insensitive' } }] } : {}),
       },
       orderBy: { name: 'asc' },
-      include: { teaching: { include: { subject: true, section: { include: { schoolClass: true } } } } },
+      include: { teaching: { include: { subject: true, section: { include: { schoolClass: true } } } }, teacherProfile: true },
     });
     return rows.map((t) => ({
       id: t.id,
@@ -268,6 +268,11 @@ export class AdminService {
       email: t.email,
       phone: t.phone,
       isActive: t.isActive,
+      signedIn: t.emailVerified,
+      status: t.teacherProfile?.status ?? 'PROFILE_INCOMPLETE',
+      qualification: t.teacherProfile?.qualification ?? null,
+      subjects: t.teacherProfile?.subjects ?? [],
+      rejectReason: t.teacherProfile?.rejectReason ?? null,
       assignments: t.teaching.map((a) => ({
         id: a.id,
         subject: a.subject.name,
@@ -279,10 +284,35 @@ export class AdminService {
     }));
   }
 
-  async createTeacher(schoolIdRaw: string | null, dto: CreateTeacherDto) {
+  /**
+   * The principal adds a teacher by name + email. No password: the teacher gets an invite email, signs in with an
+   * emailed code (or Google with the same email), completes their profile, and waits for the principal's approval.
+   */
+  async createTeacher(schoolIdRaw: string | null, dto: CreateTeacherDto, actor?: AuthUser) {
     const schoolId = this.school(schoolIdRaw);
-    const user = await this.createUser(schoolId, { name: dto.name, email: dto.email, phone: dto.phone, password: dto.password, role: 'TEACHER' });
-    return user;
+    if (await this.prisma.user.findUnique({ where: { email: dto.email } })) throw new ConflictException('An account with this email already exists');
+    const user = await this.prisma.user.create({
+      data: {
+        schoolId, name: dto.name, email: dto.email, phone: dto.phone, role: 'TEACHER', emailVerified: false, invitedAt: new Date(), invitedById: actor?.id ?? null,
+        teacherProfile: { create: { schoolId, phone: dto.phone ?? null, status: 'PROFILE_INCOMPLETE' } },
+      },
+      select: { id: true, name: true, email: true, role: true },
+    });
+    const school = await this.prisma.school.findUniqueOrThrow({ where: { id: schoolId } });
+    const by = actor ? (await this.prisma.user.findUnique({ where: { id: actor.id }, select: { name: true } }))?.name ?? 'Your principal' : 'Your principal';
+    await this.mail.invite(user.email!, user.name, 'TEACHER', school.name, by, `${env.appUrl.replace(/\/+$/, '')}/login?staff=1&email=${encodeURIComponent(user.email!)}`);
+    await this.audit.record({ schoolId, actorId: actor?.id ?? null, actorRole: actor?.role ?? null, action: 'teacher.invited', entity: 'user', entityId: user.id, after: { email: user.email }, ip: actor?.ip });
+    return { ...user, status: 'PROFILE_INCOMPLETE' };
+  }
+
+  async resendTeacherInvite(schoolIdRaw: string | null, id: string, actor: AuthUser) {
+    const schoolId = this.school(schoolIdRaw);
+    const t = await this.ownUser(schoolId, id, 'TEACHER');
+    const school = await this.prisma.school.findUniqueOrThrow({ where: { id: schoolId } });
+    await this.mail.invite(t.email!, t.name, 'TEACHER', school.name, 'Your principal', `${env.appUrl.replace(/\/+$/, '')}/login?staff=1&email=${encodeURIComponent(t.email!)}`);
+    await this.prisma.user.update({ where: { id }, data: { invitedAt: new Date() } });
+    void actor;
+    return { ok: true };
   }
 
   async updateTeacher(schoolId: string | null, id: string, dto: UpdateTeacherDto) {

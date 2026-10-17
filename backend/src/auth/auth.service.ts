@@ -9,18 +9,21 @@ import { makeJoinCode, randomToken, sha256, sixDigitCode } from '../common/util.
 import { AuditService } from '../audit/audit.service.js';
 import { SecurityService, type DeviceInfo } from './security.service.js';
 import { passwordProblem } from './passwords.js';
+import { isDemoEmail, isFamily, isStaff } from '../common/roles.js';
+import { normalizePkPhone } from '../common/phone.js';
 import type { OtpPurpose, Role } from '../generated/prisma/enums.js';
-import type { ChangePasswordDto, RegisterSchoolDto, ResetPasswordDto, StepUpDto, UpdateMeDto } from './auth.dto.js';
+import type { ChangePasswordDto, RegisterParentDto, ResetPasswordDto, StepUpDto, UpdateMeDto } from './auth.dto.js';
 
 const userInclude = {
-  school: { select: { id: true, name: true, city: true, board: true, joinCode: true } },
+  school: { select: { id: true, name: true, city: true, board: true, joinCode: true, address: true, phone: true, logoUrl: true, profileCompletedAt: true, suspendedAt: true } },
+  teacherProfile: { select: { status: true, rejectReason: true } },
   student: { include: { section: { include: { schoolClass: true } } } },
   claims: { orderBy: { createdAt: 'desc' as const }, take: 1, include: { section: { include: { schoolClass: true } } } },
   guardians: { select: { id: true } },
   _count: { select: { passkeys: true } },
 } as const;
 
-export type LoginMethod = 'password' | 'google' | 'phone' | 'passkey';
+export type LoginMethod = 'password' | 'google' | 'phone' | 'passkey' | 'email';
 
 @Injectable()
 export class AuthService {
@@ -42,7 +45,7 @@ export class AuthService {
     if (problem) throw new BadRequestException({ message: problem, code: 'WEAK_PASSWORD' });
   }
 
-  private async uniqueJoinCode(name: string) {
+  async uniqueJoinCode(name: string) {
     for (let i = 0; i < 20; i++) {
       const code = makeJoinCode(name);
       if (!(await this.prisma.school.findUnique({ where: { joinCode: code } }))) return code;
@@ -56,48 +59,41 @@ export class AuthService {
 
   // ---------- registration & verification ----------
 
-  /** An email used for a sign-up that was never verified is released after the code expires. */
+  /** An email used for a family sign-up that was never verified is released after the code expires. */
   async releaseUnverified(email: string) {
     const u = await this.prisma.user.findUnique({ where: { email } });
     if (!u || u.emailVerified || Date.now() - u.createdAt.getTime() < env.otpTtlMinutes * 60_000) return;
+    if (!isFamily(u.role)) return; // invited staff stay until the principal / super admin removes them
     await this.prisma.emailOtp.deleteMany({ where: { email } });
-    if (u.role === 'ADMIN' && u.schoolId) {
-      const others = await this.prisma.user.count({ where: { schoolId: u.schoolId, id: { not: u.id } } });
-      if (!others) {
-        await this.prisma.school.delete({ where: { id: u.schoolId } });
-        return;
-      }
-    }
-    if (u.role !== 'TEACHER') await this.prisma.user.delete({ where: { id: u.id } });
+    await this.prisma.user.delete({ where: { id: u.id } });
   }
 
-  async registerSchool(dto: RegisterSchoolDto) {
+  /**
+   * The only public sign-up: one Parent / Student account (read-only). Email is verified with a code before
+   * anything else works; the mobile number (optional) can be used to sign in with the password too.
+   */
+  async registerParent(dto: RegisterParentDto) {
     await this.releaseUnverified(dto.email);
-    const exists = await this.prisma.user.findUnique({ where: { email: dto.email } });
-    if (exists) throw new ConflictException('An account with this email already exists');
-    await this.assertGoodPassword(dto.password, [dto.email, dto.name, dto.schoolName]);
-    const passwordHash = await this.hash(dto.password);
-    const now = new Date();
-    const year = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+    if (await this.prisma.user.findUnique({ where: { email: dto.email } })) throw new ConflictException('An account with this email already exists. Log in instead.');
+    const phone = dto.phone ? normalizePkPhone(dto.phone) : null;
+    if (dto.phone && !phone) throw new BadRequestException('Enter a Pakistani mobile number like 0300 1234567');
+    if (phone) {
+      const other = await this.prisma.user.findUnique({ where: { phoneE164: phone } });
+      if (other && !other.emailVerified && isFamily(other.role) && Date.now() - other.createdAt.getTime() > env.otpTtlMinutes * 60_000) await this.prisma.user.delete({ where: { id: other.id } });
+      else if (other) throw new ConflictException('This mobile number already has an account. Log in instead.');
+    }
+    await this.assertGoodPassword(dto.password, [dto.email, dto.name]);
     const user = await this.prisma.user.create({
-      data: {
-        email: dto.email,
-        name: dto.name,
-        passwordHash,
-        role: 'ADMIN',
-        school: {
-          create: {
-            name: dto.schoolName,
-            city: dto.city,
-            board: dto.board,
-            joinCode: await this.uniqueJoinCode(dto.schoolName),
-            sessions: { create: { name: `${year}-${String((year + 1) % 100).padStart(2, '0')}`, startsOn: new Date(Date.UTC(year, 3, 1)), isCurrent: true } },
-          },
-        },
-      },
+      data: { email: dto.email, name: dto.name, phone: dto.phone ?? null, phoneE164: phone, role: 'PARENT', passwordHash: await this.hash(dto.password) },
     });
+    await this.audit.record({ actorId: user.id, actorRole: 'PARENT', action: 'family.signup', entity: 'user', entityId: user.id });
     await this.issueOtp(user.email!, user.name, 'VERIFY_EMAIL');
     return { email: user.email, requiresVerification: true };
+  }
+
+  private link(path: string, params: Record<string, string>) {
+    const base = env.appUrl.replace(/\/+$/, '');
+    return `${base}${path}?${new URLSearchParams(params).toString()}`;
   }
 
   async issueOtp(email: string, name: string, purpose: OtpPurpose) {
@@ -110,7 +106,8 @@ export class AuthService {
     await this.prisma.emailOtp.create({
       data: { email, purpose, codeHash: sha256(`${email}:${code}`), expiresAt: new Date(Date.now() + env.otpTtlMinutes * 60_000) },
     });
-    if (purpose !== 'PHONE_LOGIN') await this.mail.sendOtp(email, name, code, purpose === 'VERIFY_EMAIL' ? 'verify' : purpose === 'DEVICE_CONFIRM' ? 'device' : 'reset');
+    if (purpose === 'LOGIN_CODE' || purpose === 'STEP_UP') await this.mail.loginCode(email, name, code, this.link('/email-code', { email, code }), purpose === 'LOGIN_CODE' ? 'login' : 'step-up');
+    else if (purpose !== 'PHONE_LOGIN') await this.mail.sendOtp(email, name, code, purpose === 'VERIFY_EMAIL' ? 'verify' : purpose === 'DEVICE_CONFIRM' ? 'device' : 'reset', this.link('/verify', { email, code }));
     return code;
   }
 
@@ -147,12 +144,22 @@ export class AuthService {
   // ---------- login ----------
 
   /**
-   * Step 1 of sign-in. Returns a session, or a challenge when a second step is needed:
-   * - TOTP: the account has an authenticator app (all admins);
-   * - EMAIL_DEVICE: a teacher without an authenticator app signs in on a new device.
+   * Password sign-in, for Parent / Student accounts only (email OR mobile number + password).
+   * Staff (super admin, principal, teacher) never use a password: they get an emailed code instead.
+   * Returns a session, or a challenge when a second step is needed (authenticator app / new-device code).
    */
-  async login(email: string, password: string, device: DeviceInfo = {}) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+  async login(identifier: { email?: string; phone?: string }, password: string, device: DeviceInfo = {}) {
+    const phone = identifier.phone ? normalizePkPhone(identifier.phone) : null;
+    if (!identifier.email && identifier.phone && !phone) throw new BadRequestException('Enter your email, or a Pakistani mobile number like 0300 1234567');
+    const user = identifier.email
+      ? await this.prisma.user.findUnique({ where: { email: identifier.email } })
+      : phone
+        ? await this.prisma.user.findUnique({ where: { phoneE164: phone } })
+        : null;
+    if (!user && !identifier.email && !phone) throw new BadRequestException('Enter your email or mobile number');
+    if (user && isStaff(user.role)) {
+      throw new ForbiddenException({ message: 'Principals, teachers and LaalPen admins do not use a password. Choose “Staff” and sign in with the code we email you, Google or a passkey.', code: 'STAFF_USE_EMAIL_CODE' });
+    }
     if (user?.lockedUntil && user.lockedUntil > new Date()) {
       const mins = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60_000);
       throw new HttpException({ message: `Too many wrong passwords. Try again in ${mins} minute${mins === 1 ? '' : 's'} or reset your password.`, code: 'ACCOUNT_LOCKED' }, HttpStatus.TOO_MANY_REQUESTS);
@@ -160,15 +167,56 @@ export class AuthService {
     const ok = user?.passwordHash ? await bcrypt.compare(password, user.passwordHash) : false;
     if (!user || !ok) {
       if (user) await this.countFailedLogin(user.id, device.ip);
-      throw new UnauthorizedException('Email or password is incorrect');
+      throw new UnauthorizedException(identifier.email ? 'Email or password is incorrect' : 'Mobile number or password is incorrect');
     }
-    if (user.failedLogins) await this.prisma.user.update({ where: { id: user.id }, data: { failedLogins: 0, lockedUntil: null } });
+    // the right password also turns passkey sign-in back on for family accounts
+    if (user.failedLogins || user.passkeyBlockedAt) await this.prisma.user.update({ where: { id: user.id }, data: { failedLogins: 0, lockedUntil: null, passkeyFailures: 0, passkeyBlockedAt: null } });
     if (!user.isActive) throw new ForbiddenException('Your account is disabled. Please contact your school.');
+    await this.assertSchoolActive(user);
     if (!user.emailVerified) {
-      await this.issueOtp(email, user.name, 'VERIFY_EMAIL').catch(() => undefined);
-      throw new ForbiddenException({ message: 'Please verify your email first. We sent you a code.', code: 'EMAIL_NOT_VERIFIED' });
+      if (user.email) await this.issueOtp(user.email, user.name, 'VERIFY_EMAIL').catch(() => undefined);
+      throw new ForbiddenException({ message: 'Please verify your email first. We sent you a code.', code: 'EMAIL_NOT_VERIFIED', email: user.email });
     }
     return this.secondStep(user, device, 'password');
+  }
+
+  /** Staff of a suspended school (and its students) cannot sign in. Parents may have children in other schools. */
+  async assertSchoolActive(user: { role: string; schoolId: string | null }) {
+    if (!user.schoolId || user.role === 'SUPER_ADMIN' || user.role === 'PARENT') return;
+    const school = await this.prisma.school.findUnique({ where: { id: user.schoolId }, select: { suspendedAt: true } });
+    if (school?.suspendedAt) throw new ForbiddenException({ message: 'This school is paused on LaalPen. Please contact LaalPen support.', code: 'SCHOOL_SUSPENDED' });
+  }
+
+  // ---------- staff: emailed one-time code (no passwords) ----------
+
+  /**
+   * Sends a sign-in code (and a one-tap link) to a staff email. The answer is the same whether or not the
+   * email belongs to staff (no account enumeration). Demo-school accounts (no mailbox) get the code on screen.
+   */
+  async emailCodeStart(email: string) {
+    const user = await this.prisma.user.findUnique({ where: { email }, include: { school: { select: { suspendedAt: true } } } });
+    const res: { ok: true; email: string; demoCode?: string } = { ok: true, email: maskEmail(email) };
+    if (!user || !isStaff(user.role) || !user.isActive || (user.role !== 'SUPER_ADMIN' && user.school?.suspendedAt)) return res;
+    try {
+      const code = await this.issueOtp(email, user.name, 'LOGIN_CODE');
+      if (isDemoEmail(email)) res.demoCode = code;
+    } catch (e) {
+      // asked again within a few seconds: the code already sent is still valid (same answer either way)
+      if (!(e instanceof HttpException && e.getStatus() === HttpStatus.TOO_MANY_REQUESTS)) throw e;
+    }
+    return res;
+  }
+
+  /** Checks the emailed code (single use, expires, max 5 tries), then signs in. Also proves the email (invites). */
+  async emailCodeVerify(email: string, code: string, device: DeviceInfo = {}) {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user || !isStaff(user.role)) throw new BadRequestException('Code expired, please request a new one');
+    await this.consumeOtp(email, 'LOGIN_CODE', code);
+    if (!user.isActive) throw new ForbiddenException('Your account is disabled. Please contact your school.');
+    await this.assertSchoolActive(user);
+    await this.prisma.user.update({ where: { id: user.id }, data: { emailVerified: true, passkeyFailures: 0, passkeyBlockedAt: null, failedLogins: 0, lockedUntil: null } });
+    await this.audit.record({ schoolId: user.schoolId, actorId: user.id, actorRole: user.role, action: 'login.email-code', entity: 'user', entityId: user.id, ip: device.ip });
+    return this.secondStep(user, device, 'email');
   }
 
   /** Per-account throttling (OWASP): after N wrong passwords the account is locked for a while and the owner is told. */
@@ -213,16 +261,30 @@ export class AuthService {
     return this.session(c.userId, d, c.method as LoginMethod, true);
   }
 
-  async googleLogin(idToken: string, device: DeviceInfo = {}) {
+  /**
+   * Google sign-in (Firebase verifies the Google email). Staff: only an account that the super admin /
+   * principal already created — Google never creates staff. Family: signs in, or with signup=true creates
+   * a Parent / Student account (its email is already verified by Google).
+   */
+  async googleLogin(idToken: string, device: DeviceInfo = {}, signup = false) {
     const g = await this.firebase.verifyGoogleToken(idToken);
     const user = await this.prisma.user.findUnique({ where: { email: g.email } });
     if (!user) {
-      throw new NotFoundException({
-        message: 'No LaalPen account uses this Google email. Ask your school admin to add you, or register your school.',
-        code: 'ACCOUNT_NOT_FOUND',
+      if (!signup) {
+        throw new NotFoundException({
+          message: 'No LaalPen account uses this Google email. Staff: ask your principal to add you. Parents and students: create an account first.',
+          code: 'ACCOUNT_NOT_FOUND',
+        });
+      }
+      const created = await this.prisma.user.create({
+        data: { email: g.email, name: (g.name || g.email.split('@')[0]).slice(0, 80), role: 'PARENT', emailVerified: true, firebaseUid: g.uid },
       });
+      await this.audit.record({ actorId: created.id, actorRole: 'PARENT', action: 'family.signup-google', entity: 'user', entityId: created.id, ip: device.ip });
+      await this.security.rememberDevice(created.id, device, 'google');
+      return this.session(created.id, device, 'google');
     }
     if (!user.isActive) throw new ForbiddenException('Your account is disabled. Please contact your school.');
+    await this.assertSchoolActive(user);
     if (!user.emailVerified) {
       // someone else may have registered this email without owning it: drop their password and sessions
       await this.prisma.user.update({ where: { id: user.id }, data: { firebaseUid: g.uid, emailVerified: true, passwordHash: null } });
@@ -238,16 +300,18 @@ export class AuthService {
 
   async forgotPassword(email: string) {
     const user = await this.prisma.user.findUnique({ where: { email } });
-    if (user) await this.issueOtp(email, user.name, 'RESET_PASSWORD').catch(() => undefined);
+    if (user && !isStaff(user.role)) await this.issueOtp(email, user.name, 'RESET_PASSWORD').catch(() => undefined);
     return { ok: true };
   }
 
   async resetPassword(dto: ResetPasswordDto) {
     const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (!user) throw new BadRequestException('Incorrect code');
+    if (isStaff(user.role)) throw new BadRequestException({ message: 'Staff accounts have no password. Sign in with the code we email you.', code: 'STAFF_USE_EMAIL_CODE' });
     await this.assertGoodPassword(dto.password, [dto.email, user.name]);
     await this.consumeOtp(dto.email, 'RESET_PASSWORD', dto.code);
-    await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash: await this.hash(dto.password), emailVerified: true, passwordChangedAt: new Date(), failedLogins: 0, lockedUntil: null } });
+    // the emailed code also re-enables passkey sign-in after failed tries
+    await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash: await this.hash(dto.password), emailVerified: true, passwordChangedAt: new Date(), failedLogins: 0, lockedUntil: null, passkeyFailures: 0, passkeyBlockedAt: null } });
     await this.mail.securityAlert(dto.email, user.name, 'Your password was changed', ['Your LaalPen password was reset with an emailed code. All other devices were signed out.'], this.security.panicUrl(user.id));
     await this.revokeAll(user.id, 'password-reset');
     await this.audit.record({ schoolId: user.schoolId, actorId: user.id, action: 'password.reset', entity: 'user', entityId: user.id });
@@ -348,12 +412,26 @@ export class AuthService {
     if (!sessionId) throw new BadRequestException('Please sign in again');
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
     let ok = false;
-    if (dto.password && user.passwordHash) ok = await bcrypt.compare(dto.password, user.passwordHash);
+    if (dto.password && user.passwordHash && !isStaff(user.role)) ok = await bcrypt.compare(dto.password, user.passwordHash);
     if (!ok && dto.code) ok = (await this.security.checkTotp(userId, dto.code)) || (await this.security.useBackupCode(userId, dto.code));
     if (!ok && dto.idToken) ok = (await this.firebase.verifyGoogleToken(dto.idToken).catch(() => null))?.email === user.email;
+    if (!ok && dto.emailCode && user.email) ok = await this.consumeOtp(user.email, 'STEP_UP', dto.emailCode).then(() => true, () => false);
     if (!ok) throw new BadRequestException('That did not match. Try again.');
     await this.prisma.session.update({ where: { id: sessionId }, data: { stepUpAt: new Date() } });
     return { ok: true, validMinutes: env.stepUpMinutes };
+  }
+
+  /** Staff confirm a sensitive action with an emailed code (they have no password). */
+  async stepUpEmailStart(userId: string) {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    if (!user.email) throw new BadRequestException('This account has no email');
+    try {
+      const code = await this.issueOtp(user.email, user.name, 'STEP_UP');
+      return { ok: true, email: maskEmail(user.email), ...(isDemoEmail(user.email) ? { demoCode: code } : {}) };
+    } catch (e) {
+      if (e instanceof HttpException && e.getStatus() === HttpStatus.TOO_MANY_REQUESTS) return { ok: true, email: maskEmail(user.email) };
+      throw e;
+    }
   }
 
   // ---------- profile ----------
@@ -370,6 +448,7 @@ export class AuthService {
 
   async changePassword(userId: string, sessionId: string | undefined, dto: ChangePasswordDto) {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    if (isStaff(user.role)) throw new ForbiddenException({ message: 'Staff accounts have no password: you sign in with an emailed code, Google or a passkey.', code: 'STAFF_USE_EMAIL_CODE' });
     if (!user.passwordHash) {
       // Google-only account: setting a first password needs no current password
     } else if (!dto.currentPassword || !(await bcrypt.compare(dto.currentPassword, user.passwordHash))) {
@@ -397,8 +476,26 @@ export class AuthService {
       twoFactor: !!u.totpEnabledAt,
       passkeys: u._count?.passkeys ?? 0,
       // a passkey also counts as two-step sign-in
-      mfaSetupRequired: u.role === 'ADMIN' && env.requireAdmin2fa && !u.totpEnabledAt && !(u._count?.passkeys > 0),
-      school: u.school ?? null,
+      mfaSetupRequired: u.role === 'PRINCIPAL' && env.requireAdmin2fa && !u.totpEnabledAt && !(u._count?.passkeys > 0) && !isDemoEmail(u.email),
+      staff: isStaff(u.role),
+      usesPassword: !isStaff(u.role),
+      hasPassword: !!u.passwordHash,
+      passkeyBlocked: !!u.passkeyBlockedAt,
+      school: u.school
+        ? {
+            id: u.school.id,
+            name: u.school.name,
+            city: u.school.city,
+            board: u.school.board,
+            joinCode: u.role === 'PRINCIPAL' || u.role === 'TEACHER' ? u.school.joinCode : undefined,
+            address: u.school.address,
+            phone: u.school.phone,
+            logoUrl: u.school.logoUrl,
+            profileComplete: !!u.school.profileCompletedAt,
+            suspended: !!u.school.suspendedAt,
+          }
+        : null,
+      teacher: u.role === 'TEACHER' ? { status: u.teacherProfile?.status ?? 'PROFILE_INCOMPLETE', rejectReason: u.teacherProfile?.rejectReason ?? null } : null,
       student: u.student
         ? {
             id: u.student.id,

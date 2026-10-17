@@ -4,7 +4,7 @@ import type { Session } from './types';
 import { fetchWithTimeout, markServerOk, wakeServer } from './wake';
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string, public code?: string) {
+  constructor(public status: number, message: string, public code?: string, public body?: any) {
     super(message);
   }
 }
@@ -41,6 +41,11 @@ async function refreshSession(): Promise<boolean> {
 let onMfaSetupRequired: (() => void) | null = null;
 export const setMfaSetupHandler = (fn: () => void) => { onMfaSetupRequired = fn; };
 
+/** Called when the server says a setup step comes first (principal: school profile, teacher: waiting for approval). */
+let onSetupGate: ((code: string) => void) | null = null;
+export const setSetupGateHandler = (fn: (code: string) => void) => { onSetupGate = fn; };
+const SETUP_CODES = new Set(['SCHOOL_PROFILE_REQUIRED', 'TEACHER_APPROVAL_REQUIRED', 'SCHOOL_SUSPENDED']);
+
 /** Called when the server wants a fresh password / authenticator check (sensitive actions). Resolves true when confirmed. */
 let onStepUp: (() => Promise<boolean>) | null = null;
 export const setStepUpHandler = (fn: () => Promise<boolean>) => { onStepUp = fn; };
@@ -59,8 +64,9 @@ async function parse(res: Response) {
   try { body = text ? JSON.parse(text) : null; } catch { body = { message: text }; }
   if (!res.ok) {
     if (res.status === 403 && body?.code === 'MFA_SETUP_REQUIRED') onMfaSetupRequired?.();
+    if (res.status === 403 && SETUP_CODES.has(body?.code)) onSetupGate?.(body.code);
     const msg = Array.isArray(body?.message) ? body.message[0] : body?.message;
-    throw new ApiError(res.status, msg || 'Something went wrong. Please try again.', body?.code);
+    throw new ApiError(res.status, msg || 'Something went wrong. Please try again.', body?.code, body);
   }
   return body;
 }
